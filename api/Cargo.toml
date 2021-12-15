@@ -7,4 +7,3 @@ edition = "2018"
 
 [dependencies]
 serde = { version = "1.0.131", features = ["derive"] }
-rmp-serde = "1.0.0-beta.2"

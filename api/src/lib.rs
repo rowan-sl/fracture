@@ -1,14 +1,2 @@
-#[cfg(test)]
-mod tests {
-    #[test]
-    fn it_works() {
-        assert_eq!(2 + 2, 4);
-    }
-}
-
 mod types;
 pub use types::messages;
-
-pub fn hello() {
-    println!("Hello World!");
-}
