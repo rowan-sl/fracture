@@ -7,6 +7,9 @@ pub mod msg {
     pub enum MessageVarient {
         DisconnectMessage {},
         ConnectMessage {},
+        ServerClosed {
+            close_message: String
+        }
     }
 
     /// Hello, hello, can you hear me?

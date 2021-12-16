@@ -1,156 +1,101 @@
-use tokio::io::{self, AsyncReadExt, AsyncWriteExt};
+use tokio::io::{self};
 use tokio::net::TcpListener;
-use tokio::net::TcpStream;
-use tokio::sync::broadcast::*;
-use queues::Queue;
-use queues::IsQueue;
-use queues::queue;
-use api::seri::res::*;
+use tokio::task;
+use tokio::{ join, select };
+use tokio::sync::broadcast;
 
-#[derive(Debug)]
-enum SendStatus {
-    Sent (usize),
-    NoTask,
-    Failure (std::io::Error),
-    SeriError (api::seri::res::SerializationError),
-}
-
-enum MultiSendStatus {
-    Worked {
-        amnt: u32,
-        bytes: u128,
-    },
-    Failure (SendStatus),
-    NoTask,
-}
-
-struct ClientInterface {
-    to_send: Queue<api::msg::Message>,
-    socket: TcpStream,
-}
-
-impl ClientInterface {
-    pub fn new(sock: TcpStream) -> ClientInterface {
-        ClientInterface {
-            to_send: queue![],
-            socket: sock,
-        }
-    }
-
-    pub async fn close(&mut self) {
-        //TODO make it send a shutdown message and clear queue and stuff
-        self.send_all_queued().await;
-        match self.socket.shutdown().await {
-            Ok(_) => {},
-            Err(err) => {
-                panic!("Cound not shutdown socket!\n{}", err);
-            }
-        };
-        //& bye bye me
-        drop(self);
-    }
-
-    /// Send one message from the queue
-    async fn send_queued_message(&mut self) -> SendStatus {
-        let value = self.to_send.remove();
-        match value {
-            Ok(v) => {
-                let serialized_msg_res = api::seri::serialize(&v);
-                match serialized_msg_res {
-                    Ok(mut serialized_msg) => {
-                        let wrote_size = serialized_msg.size();
-                        let b_data = serialized_msg.as_bytes();
-                        let write_status = self.socket.write_all(&b_data).await;
-                        match write_status {
-                            Ok(_) => SendStatus::Sent(wrote_size),
-                            Err(err) => SendStatus::Failure(err)
-                        }
-                    }
-                    Err(err) => {
-                        SendStatus::SeriError (err)
-                    }
-                }
-            },
-            Err(_err) => {
-                SendStatus::NoTask
-            }//Do nothing as there is nothing to do ;)
-        }
-    }
-
-    /// Send all queued messages
-    async fn send_all_queued(&mut self) -> MultiSendStatus {
-        let mut sent = 0;
-        let mut sent_bytes = 0;
-        loop {
-            let res = self.send_queued_message().await;
-            match res {
-                SendStatus::NoTask => {
-                    if sent == 0 {
-                        return MultiSendStatus::NoTask;
-                    } else {
-                        return MultiSendStatus::Worked {
-                            amnt: sent,
-                            bytes:sent_bytes,
-                        };
-                    }
-                },
-                SendStatus::Sent (stat) => {
-                    sent += 1;
-                    sent_bytes += stat as u128;
-                },
-                SendStatus::Failure (err) => {
-                    return MultiSendStatus::Failure (SendStatus::Failure (err));
-                },
-                SendStatus::SeriError (err) => {
-                    return MultiSendStatus::Failure (SendStatus::SeriError (err));
-                }
-            }
-        }
-    }
-
-    /// Process a message, and queue apropreate responses for sending
-    pub async fn process(&mut self, msg: api::msg::Message) {
-        //TODO implement this
-    }
-
-    // update the ClientInterface, reading and writing i/o, and doing processing
-    pub async fn update(&mut self) {
-        let latest = api::seri::get_message_from_socket(&mut self.socket).await;
-        println!("{:#?}", latest);
-        match latest {
-            Err(err) => {
-                panic!("Failed to get a message!, {:#?}", err);
-            },
-            Ok(GetMessageResponse {msg, bytes}) => {
-                self.process(msg).await;
-            }
-        }
-        match self.send_all_queued().await {
-            MultiSendStatus::NoTask => {},
-            MultiSendStatus::Failure (stat) => {
-                panic!("Failed to send message {:?}", stat);
-            },
-            MultiSendStatus::Worked { amnt, bytes } => {}
-        }
-    }
-}
+mod client_interface;
+use client_interface::*;
+mod types;
+use types::*;
 
 #[tokio::main]
 async fn main() -> io::Result<()> {
-    let listener = TcpListener::bind("127.0.0.1:6142").await?;
+    let (progsig_tx, _progsig_rx): (broadcast::Sender<ProgramMessage>, broadcast::Receiver<ProgramMessage>) = broadcast::channel(10);
+    let ctrlc_transmitter = progsig_tx.clone();
 
-    loop {
-        let (mut socket, _) = listener.accept().await?;
+    let accepter_task: task::JoinHandle<io::Result<()>> = tokio::spawn(async move {
+        // TODO make address configurable
+        let listener = TcpListener::bind("127.0.0.1:6142").await?;
+        let mut sysmsg_rcv = progsig_tx.subscribe();
+        let mut tasks: Vec<task::JoinHandle<()>> = vec![];
 
-        tokio::spawn(
-            async move {
-                let mut interface = ClientInterface::new(socket);
-                println!("Connected to {:?}", interface.socket.peer_addr());
-                loop {
-                    println!("Reading from sock");
-                    interface.update().await;
+        loop {
+            select! {
+                accepted_sock = listener.accept() => {
+                    match accepted_sock {
+                        Ok(socket_addr) => {
+                            let mut reciever = progsig_tx.subscribe();
+                            let (socket, _addr) = socket_addr;
+
+                            tasks.push(
+                                tokio::spawn(
+                                    async move {
+                                        let mut interface = ClientInterface::new(socket, reciever);
+                                        println!("Connected to {:?}", interface.get_client_addr().unwrap());
+                                        loop {
+                                            println!("Reading from sock");
+                                            // TODO fix as the get_message_from_socket will block untill it gets a new message
+                                            match interface.update().await {
+                                                Ok(stat) => {
+                                                    match stat {
+                                                        UpdateStatus::Shutdown => {
+                                                            break;
+                                                        },
+                                                        _ => {}
+                                                    }
+                                                },
+                                                Err(err) => {
+                                                    println!("Update client error: {:#?}", err);
+                                                }
+                                            }
+                                        }
+                                    }
+                                )
+                            );
+                        },
+                        Err(err) => {
+                            println!("Error while looking for a client {:?}", err);
+                        }
+                    }
                 }
-            }
-        );
-    }
+                recieved = sysmsg_rcv.recv() => {
+                    match recieved {
+                        Ok(msg) => {
+                            match msg {
+                                ProgramMessage::Shutdown => {
+                                    //TODO shutdown logic, make this wait untill all client things shutdown corectly
+                                    for task in tasks.iter_mut() {
+                                        println!("Shutting down {:?}", task);
+                                        let status = task.await;
+                                        match status {
+                                            Ok(stat) => {
+                                                println!("{:?}", stat);
+                                            },
+                                            Err(err) => {
+                                                panic!("Failed to cancel client {:?}", err);
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        Err(err) => {
+                            println!("Error reading system message channel\n{:?}", err);
+                        }
+                    }
+                    return Ok(());
+                }
+            };
+        }
+    });
+    let wait_for_ctrlc: task::JoinHandle<io::Result<()>> = tokio::spawn(async move {
+        let sig_res = tokio::signal::ctrl_c().await;
+        println!("Recieved ctrl+c");
+        ctrlc_transmitter.send(ProgramMessage::Shutdown).unwrap();
+        println!("Sent shutdown msg");
+        sig_res
+    });
+    join!(accepter_task, wait_for_ctrlc);
+    Ok(())
 }

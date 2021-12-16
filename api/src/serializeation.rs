@@ -7,7 +7,6 @@ pub mod seri {
     use tokio::net::TcpStream;
     use tokio::io::AsyncWriteExt;
     use bytes::Bytes;
-    use bytes::BufMut;
 
     pub mod res {
         use super:: { HeaderParserError, Message };
@@ -85,6 +84,8 @@ pub mod seri {
 
     /// Recieve and deserialize a message from a TcpStream
     /// asynchronus, and will not return untill is encounters a error, or reads one whole message
+    ///
+    /// This is probably cancelation safe
     pub async fn get_message_from_socket(socket: &mut TcpStream) -> Result<res::GetMessageResponse, res::GetMessageError> {
         socket.readable().await;
         let mut header_buffer = [0; HEADER_LEN];
@@ -93,8 +94,6 @@ pub mod seri {
             match socket.try_read(&mut header_buffer) {
                 Ok(0) => {
                     continue;
-                    println!("Disconnect, Header");
-                    return Err(res::GetMessageError::Disconnected)
                 },
                 Ok(n) => {
                     read += n;
@@ -113,7 +112,7 @@ pub mod seri {
         }
         drop(read);
         println!("{:?}", header_buffer);
-        let mut header_r = MessageHeader::from_bytes(vec2bytes(Vec::from(header_buffer)));
+        let header_r = MessageHeader::from_bytes(vec2bytes(Vec::from(header_buffer)));
         match header_r {
             Ok(header) => {
                 let read_amnt = header.size();
@@ -124,8 +123,6 @@ pub mod seri {
                     match socket.try_read_buf(&mut buffer) {
                         Ok(0) => {
                             continue;
-                            println!("Disconnect, Body");
-                            return Err(res::GetMessageError::Disconnected);
                         },
                         Ok(n) => {
                             read += n;
