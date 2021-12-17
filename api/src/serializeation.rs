@@ -10,6 +10,7 @@ pub mod seri {
 
     pub mod res {
         use super:: { HeaderParserError, Message };
+
         #[derive(Debug)]
         pub enum SerializationError {
             Generic,
@@ -82,12 +83,66 @@ pub mod seri {
         socket.write_all(&encoded).await.unwrap();
     }
 
+    //TODO implement or remove this
+    // enum ReaderStage {
+    //     Nothing,
+    //     Header,
+    //     Message,
+    //     Done,
+    // }
+
+    // /// Use this to read messages from a socket in a non-blocking way
+    // pub struct SocketMessageReader {
+    //     socket: &'static mut TcpStream,
+    //     stage: ReaderStage,
+    //     header_read: usize,
+    //     header_buffer: [u8; HEADER_LEN],
+    //     message_header: MessageHeader,
+    //     message_buffer: Vec<u8>,
+    // }
+
+    // impl SocketMessageReader {
+    //     pub fn new(sock: &'static mut TcpStream) -> SocketMessageReader {
+    //         SocketMessageReader {
+    //             socket: sock,
+    //             stage: ReaderStage::Nothing,
+    //             header_read: 0,
+    //             header_buffer: [0; HEADER_LEN],
+    //             message_header: MessageHeader::blank(),
+    //             message_buffer: Vec::new()
+    //         }
+    //     }
+
+    //     /// If it has finished, then return the decoded message.
+    //     pub fn get(&mut self) -> Option<Message> {
+    //         if self.header_read >= HEADER_LEN {
+
+    //         }
+    //         None
+    //     }
+
+        /// Reset the state of the message header, equivilent to deleting and reinitialzing it, but more efficient (theoretically).
+        ///
+        /// Retains the same socket
+    //     pub fn reset(&mut self) {
+    //         self.stage = ReaderStage::Nothing;
+    //         self.header_read = 0;
+    //         self.header_buffer.fill_with(||0);
+    //         self.message_header = MessageHeader::blank();
+    //         self.message_buffer = Vec::new();
+    //     }
+    // }
+
     /// Recieve and deserialize a message from a TcpStream
     /// asynchronus, and will not return untill is encounters a error, or reads one whole message
     ///
     /// This is probably cancelation safe
+    ///
+    /// If you want something that is non-blocking, then use the SocketMessageReader struct
     pub async fn get_message_from_socket(socket: &mut TcpStream) -> Result<res::GetMessageResponse, res::GetMessageError> {
-        socket.readable().await;
+        //TODO god fix this sin
+        drop(socket.readable().await);//heck u and ill see u never
+
         let mut header_buffer = [0; HEADER_LEN];
         let mut read = 0;
         loop {
@@ -119,7 +174,8 @@ pub mod seri {
                 let mut buffer: Vec<u8> = Vec::with_capacity(read_amnt);
                 let mut read = 0;
                 loop {
-                    socket.readable().await;
+                    //TODO goodbye
+                    drop(socket.readable().await);
                     match socket.try_read_buf(&mut buffer) {
                         Ok(0) => {
                             continue;

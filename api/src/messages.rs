@@ -56,6 +56,13 @@ pub mod header {
             }
         }
 
+        /// Creates a header of size 0
+        pub fn blank() -> MessageHeader {
+            MessageHeader {
+                msg_size: 0
+            }
+        }
+
         /// Get the size of the message
         /// Can panic, if it cannot convert the msg_size to usize
         pub fn size(&self) -> usize {

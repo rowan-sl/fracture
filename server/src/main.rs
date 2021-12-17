@@ -1,111 +1,101 @@
 use tokio::io::{self};
 use tokio::net::TcpListener;
 use tokio::task;
-use tokio::{ join, select };
-use tokio::sync::broadcast;
+use tokio::sync::broadcast::*;
 
 mod client_interface;
 use client_interface::*;
-mod types;
-use types::*;
+
+#[derive(Clone, Debug)]
+struct ShutdownMessage {
+    reason: String
+}
 
 #[tokio::main]
 async fn main() -> io::Result<()> {
-    let (progsig_tx, _progsig_rx): (broadcast::Sender<ProgramMessage>, broadcast::Receiver<ProgramMessage>) = broadcast::channel(10);
-    let ctrlc_transmitter = progsig_tx.clone();
+    let (shutdown_tx, mut accepter_shutdown_rx): (Sender<ShutdownMessage>, Receiver<ShutdownMessage>) = channel(5);
+    let ctrlc_transmitter = shutdown_tx.clone();
 
     let accepter_task: task::JoinHandle<io::Result<()>> = tokio::spawn(async move {
         // TODO make address configurable
         let listener = TcpListener::bind("127.0.0.1:6142").await?;
-        let mut sysmsg_rcv = progsig_tx.subscribe();
         let mut tasks: Vec<task::JoinHandle<()>> = vec![];
 
         loop {
-            println!("E");
-            select! {
+            tokio::select! {
                 accepted_sock = listener.accept() => {
+                    let mut client_shutdown_channel = shutdown_tx.subscribe();// make shure to like and
+
                     match accepted_sock {
                         Ok(socket_addr) => {
-                            let reciever = progsig_tx.subscribe();
-                            let (socket, _addr) = socket_addr;
+                            let (socket, addr) = socket_addr;
 
-                            tasks.push(
-                                tokio::spawn(
-                                    async move {
-                                        let mut interface = ClientInterface::new(socket, reciever);
-                                        println!("Connected to {:?}", interface.get_client_addr().unwrap());
-                                        loop {
-                                            println!("Reading from sock");
-                                            // TODO fix as the get_message_from_socket will block untill it gets a new message
-                                            let stat = interface.update().await;
-                                            println!("{:?}", stat);
+                            tasks.push( tokio::spawn( async move {
+                                let mut interface = ClientInterface::new(socket);
+                                println!("Connected to {:?}", interface.get_client_addr().unwrap());
+                                loop {
+                                    println!("Reading from sock");
+                                    tokio::select! {
+                                        // if this is removed, then shutting down works, so thats a thing
+                                        stat = interface.update_read() => {
                                             match stat {
-                                                Ok(stat) => {
-                                                    match stat {
-                                                        UpdateStatus::Shutdown => {
-                                                            break;
-                                                        },
-                                                        _ => {}
-                                                    }
+                                                Ok(_stat) => {
+
                                                 },
                                                 Err(err) => {
-                                                    println!("Update client error: {:#?}", err);
+                                                    match err {
+                                                        UpdateReadError::Disconnected => {
+                                                            break;
+                                                        }
+                                                        _ => {}
+                                                    }
                                                 }
                                             }
-                                            println!("Read from sock");
                                         }
-                                    }
-                                )
-                            );
+                                        smsg = client_shutdown_channel.recv() => {
+                                            println!("Sending shutdown msg to client");
+                                            interface.update_process_all().await;
+                                            interface.close(smsg.unwrap().reason).await;
+                                            break;
+                                        }
+                                    };
+
+                                    interface.update_process_all().await;
+                                    interface.send_all_queued().await;
+                                    println!("Read from sock");
+                                };
+                                println!("Connection to {:?} closed", addr);
+                            }));
                         },
                         Err(err) => {
                             println!("Error while looking for a client {:?}", err);
                         }
-                    }
+                    };
                 }
-                recieved = sysmsg_rcv.recv() => {
-                    println!("Recieved message");
-                    match recieved {
-                        Ok(msg) => {
-                            match msg {
-                                ProgramMessage::Shutdown => {
-                                    //TODO shutdown logic, make this wait untill all client things shutdown corectly
-                                    for task in tasks.iter_mut() {
-                                        println!("Shutting down {:?}", task);
-                                        let status = task.abort();
-                                        println!("Shut down with status: {:?}", status);
-                                        // match status {
-                                        //     Ok(stat) => {
-                                        //         println!("{:?}", stat);
-                                        //     },
-                                        //     Err(err) => {
-                                        //         panic!("Failed to cancel client {:?}", err);
-                                        //     }
-                                        // }
-                                    }
-                                }
-                            }
-                        }
-                        Err(err) => {
-                            println!("Error reading system message channel\n{:?}", err);
-                        }
+                _ = accepter_shutdown_rx.recv() => {
+                    println!("{:#?}", tasks);
+                    for task in tasks.iter_mut() {
+                        task.await.unwrap();
                     }
-                    println!("Done");
+                    println!("{:#?}", tasks);
                     break;
                 }
             };
-        }
-        println!("returing");
-        return Ok(());
+        };
+        Ok(())
     });
+
     let wait_for_ctrlc: task::JoinHandle<io::Result<()>> = tokio::spawn(async move {
         let sig_res = tokio::signal::ctrl_c().await;
         println!("Recieved ctrl+c");
-        ctrlc_transmitter.send(ProgramMessage::Shutdown).unwrap();
+        if ctrlc_transmitter.receiver_count() == 0 {
+            return sig_res;
+        }
+        ctrlc_transmitter.send(ShutdownMessage {reason: String::from("Server closed")}).unwrap();
         println!("Sent shutdown msg");
         sig_res
     });
-    tokio::join!(accepter_task, wait_for_ctrlc);
-    println!("program done");
-    return Ok(());
+
+    let (_ctrlc_res, _accepter_res) = tokio::join!(wait_for_ctrlc, accepter_task);
+    Ok(())
 }
