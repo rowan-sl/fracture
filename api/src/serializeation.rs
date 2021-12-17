@@ -133,12 +133,12 @@ pub mod seri {
                                 match deserialized {
                                     Ok(msg) => {
                                         println!("{:#?}", msg);
+                                        return Ok(res::GetMessageResponse {msg: msg, bytes: buffer.len()})
                                     },
                                     Err(err) => {
                                         return Err(res::GetMessageError::DeserializationError (err));
                                     }
                                 }
-                                // return Err(GetMessageError::Disconnected);
                             }
                         },
                         Err(err) => {

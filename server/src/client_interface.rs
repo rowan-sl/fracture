@@ -23,6 +23,7 @@ pub enum MultiSendStatus {
     NoTask,
 }
 
+#[derive(Debug)]
 pub enum UpdateStatus {
     Shutdown,
     Sucsess,
@@ -60,7 +61,7 @@ impl ClientInterface {
             }
         };
         //& bye bye me
-        drop(self);
+        // drop(self);
     }
 
     /// Get the address of the client connected
@@ -139,6 +140,7 @@ impl ClientInterface {
 
     // update the ClientInterface, reading and writing i/o, and doing processing
     pub async fn update(&mut self) -> Result<UpdateStatus, UpdateError> {
+        println!("Updating");
         tokio::select! {
             latest = api::seri::get_message_from_socket(&mut self.socket) => {
                 println!("{:#?}", latest);
@@ -152,13 +154,13 @@ impl ClientInterface {
                 }
                 match self.send_all_queued().await {
                     MultiSendStatus::NoTask => {
-                        Ok(UpdateStatus::Noop)
+                        return Ok(UpdateStatus::Noop);
                     },
                     MultiSendStatus::Failure (stat) => {
                         panic!("Failed to send message {:?}", stat);
                     },
                     MultiSendStatus::Worked { amnt: _, bytes: _ } => {
-                        Ok(UpdateStatus::Sucsess)
+                        return Ok(UpdateStatus::Sucsess);
                     }
                 }
             }
@@ -170,15 +172,15 @@ impl ClientInterface {
                             crate::types::ProgramMessage::Shutdown => {
                                 println!("Shutting down!");
                                 self.close().await;
-                                Ok(UpdateStatus::Shutdown)
+                                return Ok(UpdateStatus::Shutdown);
                             }
                         }
                     },
                     Err(_err) => {
-                        Err(UpdateError::SysChannelRead)
+                        return Err(UpdateError::SysChannelRead);
                     }
                 }
             }
-        }
+        };
     }
 }

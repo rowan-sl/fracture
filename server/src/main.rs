@@ -21,11 +21,12 @@ async fn main() -> io::Result<()> {
         let mut tasks: Vec<task::JoinHandle<()>> = vec![];
 
         loop {
+            println!("E");
             select! {
                 accepted_sock = listener.accept() => {
                     match accepted_sock {
                         Ok(socket_addr) => {
-                            let mut reciever = progsig_tx.subscribe();
+                            let reciever = progsig_tx.subscribe();
                             let (socket, _addr) = socket_addr;
 
                             tasks.push(
@@ -36,7 +37,9 @@ async fn main() -> io::Result<()> {
                                         loop {
                                             println!("Reading from sock");
                                             // TODO fix as the get_message_from_socket will block untill it gets a new message
-                                            match interface.update().await {
+                                            let stat = interface.update().await;
+                                            println!("{:?}", stat);
+                                            match stat {
                                                 Ok(stat) => {
                                                     match stat {
                                                         UpdateStatus::Shutdown => {
@@ -49,6 +52,7 @@ async fn main() -> io::Result<()> {
                                                     println!("Update client error: {:#?}", err);
                                                 }
                                             }
+                                            println!("Read from sock");
                                         }
                                     }
                                 )
@@ -60,6 +64,7 @@ async fn main() -> io::Result<()> {
                     }
                 }
                 recieved = sysmsg_rcv.recv() => {
+                    println!("Recieved message");
                     match recieved {
                         Ok(msg) => {
                             match msg {
@@ -67,15 +72,16 @@ async fn main() -> io::Result<()> {
                                     //TODO shutdown logic, make this wait untill all client things shutdown corectly
                                     for task in tasks.iter_mut() {
                                         println!("Shutting down {:?}", task);
-                                        let status = task.await;
-                                        match status {
-                                            Ok(stat) => {
-                                                println!("{:?}", stat);
-                                            },
-                                            Err(err) => {
-                                                panic!("Failed to cancel client {:?}", err);
-                                            }
-                                        }
+                                        let status = task.abort();
+                                        println!("Shut down with status: {:?}", status);
+                                        // match status {
+                                        //     Ok(stat) => {
+                                        //         println!("{:?}", stat);
+                                        //     },
+                                        //     Err(err) => {
+                                        //         panic!("Failed to cancel client {:?}", err);
+                                        //     }
+                                        // }
                                     }
                                 }
                             }
@@ -84,10 +90,13 @@ async fn main() -> io::Result<()> {
                             println!("Error reading system message channel\n{:?}", err);
                         }
                     }
-                    return Ok(());
+                    println!("Done");
+                    break;
                 }
             };
         }
+        println!("returing");
+        return Ok(());
     });
     let wait_for_ctrlc: task::JoinHandle<io::Result<()>> = tokio::spawn(async move {
         let sig_res = tokio::signal::ctrl_c().await;
@@ -96,6 +105,7 @@ async fn main() -> io::Result<()> {
         println!("Sent shutdown msg");
         sig_res
     });
-    join!(accepter_task, wait_for_ctrlc);
-    Ok(())
+    tokio::join!(accepter_task, wait_for_ctrlc);
+    println!("program done");
+    return Ok(());
 }
