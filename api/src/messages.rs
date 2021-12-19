@@ -7,21 +7,83 @@ pub mod msg {
         #[derive(Deserialize, Serialize, Debug, Clone)]
         pub enum ServerForceDisconnectReason {
             Closed,
+            // all of these \/ are unused
+            //TODO implement
             Kicked,
             IpBanned,
             InvalidAuthentication,
+        }
+
+        #[derive(Deserialize, Serialize, Debug, Clone)]
+        pub struct UserId {
+            //TODO implement this? posibly w/ constructor and stuff
+        }
+
+        //TODO this
+        /// Information about what is happening with one user
+        /// for example, it could be used to say that one user changed its name to something else
+        #[derive(Deserialize, Serialize, Debug, Clone)]
+        pub enum UserNameUpdate {
+            NameChange {
+                id: UserId,
+                new: String,
+            },
+
+            NewUser {
+                id: UserId,
+                name: String,
+            },
+
+            UserLeft {
+                id: UserId,
+            }
+        }
+
+        //TODO this
+        /// Used in ServerInfo to specify if the connection has been accepted or refused
+        #[derive(Deserialize, Serialize, Debug, Clone)]
+        pub enum ConnectionStatus {
+            Connected,
+            Refused {
+                reason: String,
+            },
         }
     }
 
     #[derive(Deserialize, Serialize, Debug, Clone)]
     pub enum MessageVarient {
+        //TODO implement
+        /// Client sends this as its last message when it leaves
         DisconnectMessage {},
+
         /// Client sends this as its first message
         ConnectMessage {
             name: String
         },
+
+        //TODO this
+        /// Server sends this after client sends ConnectMessage, with info about the server
+        /// should not be sent any other time
+        ServerInfo {
+            name: String,
+            conn_status: types::ConnectionStatus,
+            connected_users: Vec<types::UserNameUpdate>
+        },
+
+        //TODO this
+        /// Update to server info
+        /// can be sent at any time
+        ServerInfoUpdate {
+            name: Option<String>,
+            user_updates: Vec<types::UserNameUpdate>
+        },
+
+        /// Request a simple response
         Ping,
+
+        /// The simple response
         Pong,
+
         /// Server has kicked/disconnected the client for some reason
         ServerForceDisconnect {
             reason: types::ServerForceDisconnectReason,

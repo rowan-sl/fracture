@@ -8,7 +8,8 @@ use api::utils::*;
 mod client_interface;
 use client_interface::*;
 
-const ADDR: &str = "127.0.0.1:6142";
+mod conf;
+use conf::*;
 
 #[derive(Clone, Debug)]
 struct ShutdownMessage {
