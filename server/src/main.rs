@@ -1,5 +1,6 @@
 use tokio::io::{self};
 use tokio::net::TcpListener;
+use tokio::net::TcpStream;
 use tokio::task;
 use tokio::sync::broadcast::*;
 
@@ -9,6 +10,47 @@ use client_interface::*;
 #[derive(Clone, Debug)]
 struct ShutdownMessage {
     reason: String
+}
+
+#[inline]
+async fn handle_client(socket: TcpStream, addr: std::net::SocketAddr, shutdown_sender: &Sender<ShutdownMessage>) -> task::JoinHandle<()> {
+    let mut client_shutdown_channel = shutdown_sender.subscribe();//make shure to like and
+    tokio::spawn( async move {
+        let mut interface = ClientInterface::new(socket);
+        println!("Connected to {:?}, reported ip {:?}", addr, interface.get_client_addr().unwrap());
+        loop {
+            tokio::select! {
+                stat = interface.update_read() => {
+                    match stat {
+                        stati::UpdateReadStatus::Disconnected => {
+                            println!("{:?} disconnected!", addr);
+                            interface.close(String::from(""), true).await;// do not notify the client of disconnecting, as it is already disconnected
+                            break;
+                        },
+                        stati::UpdateReadStatus::ReadError ( err ) => {
+                            match err {
+                                stati::ReadMessageError::Disconnected => {}, // already handeled, should never occur
+                                oerr => {
+                                    panic!("Failed to read message! {:#?}", oerr);
+                                }
+                            }
+                        },
+                        stati::UpdateReadStatus::Sucsess => {}
+                    }
+                }
+                smsg = client_shutdown_channel.recv() => {
+                    println!("Closing connection to {:?}", addr);
+                    interface.update_process_all().await;
+                    interface.close(smsg.unwrap().reason, false).await;
+                    break;
+                }
+            };
+
+            interface.update_process_all().await;
+            interface.send_all_queued().await;
+        };
+        println!("Connection to {:?} closed", addr);
+    })
 }
 
 #[tokio::main]
@@ -24,60 +66,21 @@ async fn main() -> io::Result<()> {
         loop {
             tokio::select! {
                 accepted_sock = listener.accept() => {
-                    let mut client_shutdown_channel = shutdown_tx.subscribe();// make shure to like and
-
                     match accepted_sock {
                         Ok(socket_addr) => {
                             let (socket, addr) = socket_addr;
 
-                            tasks.push( tokio::spawn( async move {
-                                let mut interface = ClientInterface::new(socket);
-                                println!("Connected to {:?}", interface.get_client_addr().unwrap());
-                                loop {
-                                    println!("Reading from sock");
-                                    tokio::select! {
-                                        // if this is removed, then shutting down works, so thats a thing
-                                        stat = interface.update_read() => {
-                                            match stat {
-                                                Ok(_stat) => {
-
-                                                },
-                                                Err(err) => {
-                                                    match err {
-                                                        UpdateReadError::Disconnected => {
-                                                            break;
-                                                        }
-                                                        _ => {}
-                                                    }
-                                                }
-                                            }
-                                        }
-                                        smsg = client_shutdown_channel.recv() => {
-                                            println!("Sending shutdown msg to client");
-                                            interface.update_process_all().await;
-                                            interface.close(smsg.unwrap().reason).await;
-                                            break;
-                                        }
-                                    };
-
-                                    interface.update_process_all().await;
-                                    interface.send_all_queued().await;
-                                    println!("Read from sock");
-                                };
-                                println!("Connection to {:?} closed", addr);
-                            }));
+                            tasks.push(handle_client(socket, addr, &shutdown_tx).await);
                         },
                         Err(err) => {
-                            println!("Error while looking for a client {:?}", err);
+                            println!("Error while accepting a client {:?}", err);
                         }
                     };
                 }
                 _ = accepter_shutdown_rx.recv() => {
-                    println!("{:#?}", tasks);
                     for task in tasks.iter_mut() {
                         task.await.unwrap();
                     }
-                    println!("{:#?}", tasks);
                     break;
                 }
             };
@@ -87,12 +90,11 @@ async fn main() -> io::Result<()> {
 
     let wait_for_ctrlc: task::JoinHandle<io::Result<()>> = tokio::spawn(async move {
         let sig_res = tokio::signal::ctrl_c().await;
-        println!("Recieved ctrl+c");
+        println!("\nRecieved ctrl+c, shutting down");
         if ctrlc_transmitter.receiver_count() == 0 {
             return sig_res;
         }
         ctrlc_transmitter.send(ShutdownMessage {reason: String::from("Server closed")}).unwrap();
-        println!("Sent shutdown msg");
         sig_res
     });
 

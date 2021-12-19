@@ -146,9 +146,10 @@ pub mod seri {
         let mut header_buffer = [0; HEADER_LEN];
         let mut read = 0;
         loop {
+            drop(socket.readable().await);
             match socket.try_read(&mut header_buffer) {
                 Ok(0) => {
-                    continue;
+                    return Err(res::GetMessageError::Disconnected);
                 },
                 Ok(n) => {
                     read += n;
@@ -178,7 +179,7 @@ pub mod seri {
                     drop(socket.readable().await);
                     match socket.try_read_buf(&mut buffer) {
                         Ok(0) => {
-                            continue;
+                            return Err(res::GetMessageError::Disconnected);
                         },
                         Ok(n) => {
                             read += n;

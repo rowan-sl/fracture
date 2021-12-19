@@ -7,5 +7,5 @@ async fn main() {
         data: api::msg::MessageVarient::ConnectMessage {},
     };
     api::seri::fullsend(&message, &mut stream).await;
-    tokio::signal::ctrl_c().await;
+    drop(tokio::signal::ctrl_c().await);
 }

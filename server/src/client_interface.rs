@@ -3,56 +3,60 @@ use tokio::net::TcpStream;
 use queues::Queue;
 use queues::IsQueue;
 use queues::queue;
-use api::seri::res::*;
-// use tokio::sync::broadcast::*;
 use api::header::HEADER_LEN;
 
-#[derive(Debug)]
-pub enum SendStatus {
-    Sent (usize),
-    NoTask,
-    Failure (std::io::Error),
-    SeriError (api::seri::res::SerializationError),
-}
 
-pub enum MultiSendStatus {
-    Worked {
-        amnt: u32,
-        bytes: u128,
-    },
-    Failure (SendStatus),
-    NoTask,
-}
+pub mod stati {
+    #[derive(Debug)]
+    pub enum SendStatus {
+        Sent (usize),
+        NoTask,
+        Failure (std::io::Error),
+        SeriError (api::seri::res::SerializationError),
+    }
 
-#[derive(Debug)]
-#[allow(dead_code)]
-pub enum UpdateStatus {
-    Sucsess,
-    Noop
-}
+    pub enum MultiSendStatus {
+        Worked {
+            amnt: u32,
+            bytes: u128,
+        },
+        Failure (SendStatus),
+        NoTask,
+    }
 
-#[derive(Debug)]
-pub enum UpdateError {
+    #[derive(Debug)]
+    #[allow(dead_code)]
+    pub enum UpdateStatus {
+        Sucsess,
+        Noop
+    }
+
+    #[derive(Debug)]
+    pub struct ReadMessageStatus {
+        pub msg: api::msg::Message,
+        pub bytes: usize,
+    }
+
+    #[derive(Debug)]
+    pub enum ReadMessageError {
+        Disconnected,
+        ReadError ( std::io::Error ),
+        HeaderParser ( api::header::HeaderParserError ),
+        DeserializationError ( Box<bincode::ErrorKind> ),
+    }
+
+    #[derive(Debug)]
+    pub enum UpdateReadStatus {
+        Disconnected,
+        Sucsess,
+        ReadError ( ReadMessageError ),
+    }
 }
 
 pub struct ClientInterface {
     to_send: Queue<api::msg::Message>,
     incoming: Queue<api::msg::Message>,
     socket: TcpStream,
-}
-
-#[derive(Debug)]
-pub struct UpdateReadStatus {
-    pub msg: api::msg::Message,
-    pub bytes: usize,
-}
-
-#[derive(Debug)]
-pub enum UpdateReadError {
-    Disconnected,
-    ReadError ( std::io::Error ),
-    HeaderParser ( api::header::HeaderParserError ),
-    DeserializationError ( Box<bincode::ErrorKind> ),
 }
 
 impl ClientInterface {
@@ -64,18 +68,30 @@ impl ClientInterface {
         }
     }
 
-    //TODO remove this
-    #[allow(dead_code)]
-    pub async fn close(&mut self, reason: String) {
+
+    /// Close the socket, optionaly notifying the client why it is being disconnected, and sending all queued messages
+    pub async fn close(&mut self, reason: String, expect_alredy_shutdown: bool) {
         //TODO make it send a shutdown message and clear queue and stuff
-        self.queue_message(api::msg::Message {data: api::msg::MessageVarient::ServerClosed {close_message: reason}}).unwrap();
-        self.send_all_queued().await;
+        if !expect_alredy_shutdown {
+            // only send queued messages if it isnt alredy shutdown (or at least know it is)
+            self.queue_message(api::msg::Message {data: api::msg::MessageVarient::ServerClosed {close_message: reason}}).unwrap();
+            self.send_all_queued().await;
+        }
         match self.socket.shutdown().await {
-            Ok(_) => {},
+            Ok(_) => {
+                if !expect_alredy_shutdown {
+                    println!("Socket was expected to be closed, but it is not!");
+                }
+            },
             Err(err) => {
                 //Socket is already shutdown
-                // panic!("Cound not shutdown socket!\n{}", err);
-                println!("Socket already shut down, closed with error {:?}", err);
+                if err.kind() == std::io::ErrorKind::NotConnected {
+                    if !expect_alredy_shutdown {
+                        println!("Socket was expected to be open, but it was not!");
+                    }
+                } else {
+                    println!("Error whilst closing connection: {:#?}", err);
+                }
             }
         };
         //& bye bye me
@@ -88,7 +104,7 @@ impl ClientInterface {
     }
 
     /// Send one message from the queue
-    async fn send_queued_message(&mut self) -> SendStatus {
+    async fn send_queued_message(&mut self) -> stati::SendStatus {
         let value = self.to_send.remove();
         match value {
             Ok(v) => {
@@ -99,49 +115,49 @@ impl ClientInterface {
                         let b_data = serialized_msg.as_bytes();
                         let write_status = self.socket.write_all(&b_data).await;
                         match write_status {
-                            Ok(_) => SendStatus::Sent(wrote_size),
-                            Err(err) => SendStatus::Failure(err)
+                            Ok(_) => stati::SendStatus::Sent (wrote_size),
+                            Err(err) => stati::SendStatus::Failure (err)
                         }
                     }
                     Err(err) => {
-                        SendStatus::SeriError (err)
+                        stati::SendStatus::SeriError (err)
                     }
                 }
             },
             Err(_err) => {
-                SendStatus::NoTask
+                stati::SendStatus::NoTask
             }//Do nothing as there is nothing to do ;)
         }
     }
 
     /// Send all queued messages
-    /// 
+    ///
     /// ! THIS IS NOT CANCELATION SAFE!!!!
-    pub async fn send_all_queued(&mut self) -> MultiSendStatus {
+    pub async fn send_all_queued(&mut self) -> stati::MultiSendStatus {
         let mut sent = 0;
         let mut sent_bytes = 0;
         loop {
             let res = self.send_queued_message().await;
             match res {
-                SendStatus::NoTask => {
+                stati::SendStatus::NoTask => {
                     if sent == 0 {
-                        return MultiSendStatus::NoTask;
+                        return stati::MultiSendStatus::NoTask;
                     } else {
-                        return MultiSendStatus::Worked {
+                        return stati::MultiSendStatus::Worked {
                             amnt: sent,
                             bytes:sent_bytes,
                         };
                     }
                 },
-                SendStatus::Sent (stat) => {
+                stati::SendStatus::Sent (stat) => {
                     sent += 1;
                     sent_bytes += stat as u128;
                 },
-                SendStatus::Failure (err) => {
-                    return MultiSendStatus::Failure (SendStatus::Failure (err));
+                stati::SendStatus::Failure (err) => {
+                    return stati::MultiSendStatus::Failure (stati::SendStatus::Failure (err));
                 },
-                SendStatus::SeriError (err) => {
-                    return MultiSendStatus::Failure (SendStatus::SeriError (err));
+                stati::SendStatus::SeriError (err) => {
+                    return stati::MultiSendStatus::Failure (stati::SendStatus::SeriError (err));
                 }
             }
         }
@@ -158,57 +174,39 @@ impl ClientInterface {
         //TODO implement this
     }
 
-    /// update the ClientInterface, reading and writing i/o, and doing processing
+    /// Handles the reading message half of updating the client.
+    /// for the most part it handles errors that occur in it, but it will return info for some situations,
+    /// Like disconnects.
     ///
-    /// cancelation unsafe, and can wait for large ammounts of time before returning
-    ///
-    /// Alternatively, you can use update_read, update_process_all, and send_all_queued, which does the same thing as this
-    #[allow(dead_code)]
-    pub async fn update(&mut self) -> Result<UpdateStatus, UpdateError> {
-        println!("Updating");
-        let latest = api::seri::get_message_from_socket(&mut self.socket).await;
-        println!("{:#?}", latest);
-        let read = match latest {
-            Err(err) => {
-                panic!("Failed to get a message!, {:#?}", err);
-            },
-            Ok(GetMessageResponse {msg, bytes: _}) => {
-                self.process(msg).await;
-                true
-            }
-        };
-        match self.send_all_queued().await {
-            MultiSendStatus::NoTask => {
-                if read {
-                    return Ok(UpdateStatus::Sucsess);
+    /// This IS cancelation safe
+    pub async fn update_read(&mut self) -> stati::UpdateReadStatus {
+        let read = self.read_msg().await;
+        match read {
+            Ok(stat) => {
+                let added = self.incoming.add(stat.msg);
+                if added.is_err() {
+                    panic!("Could not queue message for sending!");
                 } else {
-                    return Ok(UpdateStatus::Noop);
+                    return stati::UpdateReadStatus::Sucsess;
                 }
             },
-            MultiSendStatus::Failure (stat) => {
-                panic!("Failed to send message {:?}", stat);
-            },
-            MultiSendStatus::Worked { amnt: _, bytes: _ } => {
-                return Ok(UpdateStatus::Sucsess);
+            Err(err) => {
+                match err {
+                    stati::ReadMessageError::Disconnected => {
+                        return stati::UpdateReadStatus::Disconnected;
+                    },
+                    oerr => {
+                        return stati::UpdateReadStatus::ReadError ( oerr );
+                    }
+                };
             }
         };
     }
 
     /// read one message from the socket
-    pub async fn update_read(&mut self) -> Result<UpdateReadStatus, UpdateReadError> {
-        // let latest = api::seri::get_message_from_socket(&mut self.socket).await;
-        // match latest {
-        //     Err(err) => {
-        //         panic!("Failed to get a message!, {:#?}", err);
-        //     },
-        //     Ok(GetMessageResponse {msg, bytes: _}) => {
-        //         self.incoming.add(msg).unwrap();
-        //     }
-        // };
-        println!("Update read start");
+    pub async fn read_msg(&mut self) -> Result<stati::ReadMessageStatus, stati::ReadMessageError> {
         //TODO god fix this sin
         drop(self.socket.readable().await);//heck u and ill see u never
-        println!("Ready to read");
 
         let mut header_buffer = [0; HEADER_LEN];
         let mut read = 0;
@@ -216,13 +214,11 @@ impl ClientInterface {
             drop(self.socket.readable().await);
             match self.socket.try_read(&mut header_buffer) {
                 Ok(0) => {
-                    return Err(UpdateReadError::Disconnected);
+                    return Err(stati::ReadMessageError::Disconnected);
                 },
                 Ok(n) => {
-                    println!("{}", n);
                     read += n;
                     if read >= HEADER_LEN {
-                        println!("{} {} {}", read, header_buffer.len(), HEADER_LEN);
                         break;
                     }
                 },
@@ -230,12 +226,11 @@ impl ClientInterface {
                     if err.kind() == tokio::io::ErrorKind::WouldBlock {
                         continue;
                     }
-                    return Err(UpdateReadError::ReadError (err))
+                    return Err(stati::ReadMessageError::ReadError (err))
                 },
             }
         }
         drop(read);
-        println!("{:?}", header_buffer);
         let header_r = api::header::MessageHeader::from_bytes(api::seri::vec2bytes(Vec::from(header_buffer)));
         match header_r {
             Ok(header) => {
@@ -247,22 +242,19 @@ impl ClientInterface {
                     drop(self.socket.readable().await);
                     match self.socket.try_read_buf(&mut buffer) {
                         Ok(0) => {
-                            return Err(UpdateReadError::Disconnected);
+                            return Err(stati::ReadMessageError::Disconnected);
                         },
                         Ok(n) => {
-                            println!("{}", n);
                             read += n;
                             if read >= read_amnt {
-                                println!("{} {} {}, {}", read, buffer.len(), buffer.capacity(), read_amnt);
                                 //TODO implement parsing the message
                                 let deserialized: std::result::Result<api::msg::Message, Box<bincode::ErrorKind>> = bincode::deserialize(&buffer[..]);
                                 match deserialized {
                                     Ok(msg) => {
-                                        println!("{:#?}", msg);
-                                        return Ok(UpdateReadStatus {msg: msg, bytes: buffer.len()})
+                                        return Ok(stati::ReadMessageStatus {msg: msg, bytes: buffer.len()})
                                     },
                                     Err(err) => {
-                                        return Err(UpdateReadError::DeserializationError (err));
+                                        return Err(stati::ReadMessageError::DeserializationError (err));
                                     }
                                 }
                             }
@@ -271,13 +263,13 @@ impl ClientInterface {
                             if err.kind() == tokio::io::ErrorKind::WouldBlock {
                                 continue;
                             }
-                            return Err(UpdateReadError::ReadError (err))
+                            return Err(stati::ReadMessageError::ReadError (err))
                         },
                     }
                 }
             },
             Err(err) => {
-                return Err(UpdateReadError::HeaderParser (err));
+                return Err(stati::ReadMessageError::HeaderParser (err));
             }
         }
     }
