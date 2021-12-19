@@ -1,6 +1,6 @@
 pub mod msg {
-    use serde::Serialize;
     use serde::Deserialize;
+    use serde::Serialize;
 
     pub mod types {
         use super::*;
@@ -11,7 +11,7 @@ pub mod msg {
             //TODO implement
             Kicked,
             IpBanned,
-            InvalidAuthentication,
+            InvalidConnectionSequence,
         }
 
         #[derive(Deserialize, Serialize, Debug, Clone)]
@@ -24,19 +24,11 @@ pub mod msg {
         /// for example, it could be used to say that one user changed its name to something else
         #[derive(Deserialize, Serialize, Debug, Clone)]
         pub enum UserNameUpdate {
-            NameChange {
-                id: UserId,
-                new: String,
-            },
+            NameChange { id: UserId, new: String },
 
-            NewUser {
-                id: UserId,
-                name: String,
-            },
+            NewUser { id: UserId, name: String },
 
-            UserLeft {
-                id: UserId,
-            }
+            UserLeft { id: UserId },
         }
 
         //TODO this
@@ -44,9 +36,7 @@ pub mod msg {
         #[derive(Deserialize, Serialize, Debug, Clone)]
         pub enum ConnectionStatus {
             Connected,
-            Refused {
-                reason: String,
-            },
+            Refused { reason: String },
         }
     }
 
@@ -57,9 +47,7 @@ pub mod msg {
         DisconnectMessage {},
 
         /// Client sends this as its first message
-        ConnectMessage {
-            name: String
-        },
+        ConnectMessage { name: String },
 
         //TODO this
         /// Server sends this after client sends ConnectMessage, with info about the server
@@ -67,7 +55,7 @@ pub mod msg {
         ServerInfo {
             name: String,
             conn_status: types::ConnectionStatus,
-            connected_users: Vec<types::UserNameUpdate>
+            connected_users: Vec<types::UserNameUpdate>,
         },
 
         //TODO this
@@ -75,7 +63,7 @@ pub mod msg {
         /// can be sent at any time
         ServerInfoUpdate {
             name: Option<String>,
-            user_updates: Vec<types::UserNameUpdate>
+            user_updates: Vec<types::UserNameUpdate>,
         },
 
         /// Request a simple response
@@ -87,22 +75,20 @@ pub mod msg {
         /// Server has kicked/disconnected the client for some reason
         ServerForceDisconnect {
             reason: types::ServerForceDisconnectReason,
-            close_message: String
-        }
+            close_message: String,
+        },
     }
 
     /// Hello, hello, can you hear me?
     #[derive(Deserialize, Serialize, Debug, Clone)]
     pub struct Message {
-        pub data: MessageVarient
+        pub data: MessageVarient,
     }
 }
 
-
 pub mod header {
-    use bytes::BufMut;
     use bytes::Buf;
-
+    use bytes::BufMut;
 
     #[derive(Debug)]
     pub enum HeaderParserError {
@@ -112,8 +98,7 @@ pub mod header {
         InvalidSuffix,
     }
 
-    pub const HEADER_LEN: usize =
-    b"ds-header".len() +
+    pub const HEADER_LEN: usize = b"ds-header".len() +
     8 + // because you cant do u64::BITS/8, since its a u32 not usize :/
     b"header-end".len();
 
@@ -122,7 +107,7 @@ pub mod header {
     /// Designed to be send before each Message, and have a fixed length so the other program
     /// knows how many by bytes to read
     pub struct MessageHeader {
-        msg_size: u64
+        msg_size: u64,
     }
 
     impl MessageHeader {
@@ -131,15 +116,13 @@ pub mod header {
         /// Can panic, if it cannot convert msg.len() to u64
         pub fn new(msg: &Vec<u8>) -> MessageHeader {
             return MessageHeader {
-                msg_size: u64::try_from(msg.len()).unwrap()
-            }
+                msg_size: u64::try_from(msg.len()).unwrap(),
+            };
         }
 
         /// Creates a header of size 0
         pub fn blank() -> MessageHeader {
-            MessageHeader {
-                msg_size: 0
-            }
+            MessageHeader { msg_size: 0 }
         }
 
         /// Get the size of the message
@@ -164,19 +147,17 @@ pub mod header {
                 return Err(HeaderParserError::InvalidLength);
             } else {
                 let header_start = header.slice(..b"ds-header".len());
-                let mut message_size = header.slice(b"ds-header".len()..b"ds-header".len()+8);
-                let header_end = header.slice(b"ds-header".len()+8..);
+                let mut message_size = header.slice(b"ds-header".len()..b"ds-header".len() + 8);
+                let header_end = header.slice(b"ds-header".len() + 8..);
                 if &header_start[..] != b"ds-header" {
                     return Err(HeaderParserError::InvalidPrefix);
                 }
                 if &header_end[..] != b"header-end" {
                     return Err(HeaderParserError::InvalidSuffix);
                 }
-                Ok(
-                    MessageHeader{
-                        msg_size: message_size.get_u64()
-                    }
-                )
+                Ok(MessageHeader {
+                    msg_size: message_size.get_u64(),
+                })
             }
         }
     }

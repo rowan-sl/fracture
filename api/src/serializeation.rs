@@ -1,15 +1,13 @@
-
-
 /// This module provides utils for serialization and deserialization of Messages.
 pub mod seri {
-    use crate::messages::msg::*;
     use crate::messages::header::*;
-    use tokio::net::TcpStream;
-    use tokio::io::AsyncWriteExt;
+    use crate::messages::msg::*;
     use bytes::Bytes;
+    use tokio::io::AsyncWriteExt;
+    use tokio::net::TcpStream;
 
     pub mod res {
-        use super:: { HeaderParserError, Message };
+        use super::{HeaderParserError, Message};
 
         #[derive(Debug)]
         pub enum SerializationError {
@@ -27,9 +25,9 @@ pub mod seri {
         pub enum GetMessageError {
             Disconnected,
             ReadError,
-            Error ( std::io::Error ),
-            HeaderParser ( HeaderParserError ),
-            DeserializationError ( Box<bincode::ErrorKind> ),
+            Error (std::io::Error),
+            HeaderParser (HeaderParserError),
+            DeserializationError (Box<bincode::ErrorKind>),
         }
     }
 
@@ -62,12 +60,10 @@ pub mod seri {
                 let header = MessageHeader::new(&dat);
                 Ok(SerializedMessage {
                     message_bytes: dat,
-                    header: header
+                    header: header,
                 })
-            },
-            Err(err) => {
-                Err(res::SerializationError::BincodeErr (err))
             }
+            Err(err) => Err(res::SerializationError::BincodeErr(err)),
         }
     }
 
@@ -89,9 +85,11 @@ pub mod seri {
     /// This is probably cancelation safe
     ///
     /// If you want something that is non-blocking, then use the SocketMessageReader struct
-    pub async fn get_message_from_socket(socket: &mut TcpStream) -> Result<res::GetMessageResponse, res::GetMessageError> {
+    pub async fn get_message_from_socket(
+        socket: &mut TcpStream,
+    ) -> Result<res::GetMessageResponse, res::GetMessageError> {
         //TODO god fix this sin
-        drop(socket.readable().await);//heck u and ill see u never
+        drop(socket.readable().await); //heck u and ill see u never
 
         let mut header_buffer = [0; HEADER_LEN];
         let mut read = 0;
@@ -100,19 +98,19 @@ pub mod seri {
             match socket.try_read(&mut header_buffer) {
                 Ok(0) => {
                     return Err(res::GetMessageError::Disconnected);
-                },
+                }
                 Ok(n) => {
                     read += n;
                     if read >= HEADER_LEN {
                         break;
                     }
-                },
+                }
                 Err(err) => {
                     if err.kind() == tokio::io::ErrorKind::WouldBlock {
                         continue;
                     }
-                    return Err(res::GetMessageError::Error (err))
-                },
+                    return Err(res::GetMessageError::Error(err));
+                }
             }
         }
         drop(read);
@@ -128,33 +126,41 @@ pub mod seri {
                     match socket.try_read_buf(&mut buffer) {
                         Ok(0) => {
                             return Err(res::GetMessageError::Disconnected);
-                        },
+                        }
                         Ok(n) => {
                             read += n;
                             if read >= read_amnt {
                                 //TODO implement parsing the message
-                                let deserialized: std::result::Result<Message, Box<bincode::ErrorKind>> = bincode::deserialize(&buffer[..]);
+                                let deserialized: std::result::Result<
+                                    Message,
+                                    Box<bincode::ErrorKind>,
+                                > = bincode::deserialize(&buffer[..]);
                                 match deserialized {
                                     Ok(msg) => {
-                                        return Ok(res::GetMessageResponse {msg: msg, bytes: buffer.len()})
-                                    },
+                                        return Ok(res::GetMessageResponse {
+                                            msg: msg,
+                                            bytes: buffer.len(),
+                                        })
+                                    }
                                     Err(err) => {
-                                        return Err(res::GetMessageError::DeserializationError (err));
+                                        return Err(res::GetMessageError::DeserializationError(
+                                            err,
+                                        ));
                                     }
                                 }
                             }
-                        },
+                        }
                         Err(err) => {
                             if err.kind() == tokio::io::ErrorKind::WouldBlock {
                                 continue;
                             }
-                            return Err(res::GetMessageError::Error (err))
-                        },
+                            return Err(res::GetMessageError::Error(err));
+                        }
                     }
                 }
-            },
+            }
             Err(err) => {
-                return Err(res::GetMessageError::HeaderParser (err));
+                return Err(res::GetMessageError::HeaderParser(err));
             }
         }
     }
@@ -166,6 +172,6 @@ pub mod seri {
 
     /// Create `Vec<u8>` from `bytes::Bytes`
     pub fn bytes2vec(data: Bytes) -> Vec<u8> {
-        return Vec::from(&data[..])
+        return Vec::from(&data[..]);
     }
 }

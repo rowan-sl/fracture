@@ -27,7 +27,7 @@ fn int2letter(num: u128) -> Result<char, u128> {
         23 => 'X',
         24 => 'Y',
         25 => 'Z',
-        _ => ' '
+        _ => ' ',
     };
     if conv == ' ' {
         return Err(num);
@@ -64,7 +64,7 @@ fn letter2int(ltr: char) -> Result<u8, char> {
         'X' => 23,
         'Y' => 24,
         'Z' => 25,
-        _ => 50
+        _ => 50,
     };
     if conv == 50 {
         return Err(ltr);
@@ -79,7 +79,9 @@ fn num_to_code(mut num: u128) -> String {
         let dig = int2letter(num % 25);
         res.push(dig.unwrap());
         num /= 25;
-        if num <= 0 {break;}
+        if num <= 0 {
+            break;
+        }
     }
     return res.chars().rev().collect::<String>();
 }
@@ -91,7 +93,7 @@ fn code_to_num(mut code: String) -> u128 {
         let v = letter2int(ch).unwrap();
         res *= 25;
         res += v as u128;
-    };
+    }
     res
 }
 
@@ -128,8 +130,8 @@ pub fn code_to_ip(code: String) -> std::net::SocketAddrV4 {
             a.try_into().unwrap(),
             b.try_into().unwrap(),
             c.try_into().unwrap(),
-            d.try_into().unwrap()
+            d.try_into().unwrap(),
         ),
-        p.try_into().unwrap()
+        p.try_into().unwrap(),
     );
 }

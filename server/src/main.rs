@@ -1,8 +1,8 @@
 use tokio::io::{self};
 use tokio::net::TcpListener;
 use tokio::net::TcpStream;
-use tokio::task;
 use tokio::sync::broadcast::*;
+use tokio::task;
 
 use api::utils::*;
 
@@ -13,14 +13,22 @@ use conf::*;
 
 #[derive(Clone, Debug)]
 struct ShutdownMessage {
-    reason: String
+    reason: String,
 }
 
-async fn handle_client(socket: TcpStream, addr: std::net::SocketAddr, shutdown_sender: &Sender<ShutdownMessage>) -> task::JoinHandle<()> {
-    let mut client_shutdown_channel = shutdown_sender.subscribe();//make shure to like and
-    tokio::spawn( async move {
-        let mut interface = ClientInterface::new(socket, String::from(NAME));
-        println!("Connected to {:?}, reported ip {:?}", addr, interface.get_client_addr().unwrap());
+async fn handle_client(
+    socket: TcpStream,
+    addr: std::net::SocketAddr,
+    shutdown_sender: &Sender<ShutdownMessage>,
+) -> task::JoinHandle<()> {
+    let mut client_shutdown_channel = shutdown_sender.subscribe(); //make shure to like and
+    tokio::spawn(async move {
+        let mut interface = ClientInterface::new(socket, String::from(NAME), vec![]);
+        println!(
+            "Connected to {:?}, reported ip {:?}",
+            addr,
+            interface.get_client_addr().unwrap()
+        );
         loop {
             tokio::select! {
                 stat = interface.update_read() => {
@@ -51,20 +59,27 @@ async fn handle_client(socket: TcpStream, addr: std::net::SocketAddr, shutdown_s
 
             interface.update_process_all().await;
             interface.send_all_queued().await;
-        };
+        }
         println!("Connection to {:?} closed", addr);
     })
 }
 
 #[tokio::main]
 async fn main() -> io::Result<()> {
-    let (shutdown_tx, mut accepter_shutdown_rx): (Sender<ShutdownMessage>, Receiver<ShutdownMessage>) = channel(5);
+    let (shutdown_tx, mut accepter_shutdown_rx): (
+        Sender<ShutdownMessage>,
+        Receiver<ShutdownMessage>,
+    ) = channel(5);
     let ctrlc_transmitter = shutdown_tx.clone();
 
     let accepter_task: task::JoinHandle<io::Result<()>> = tokio::spawn(async move {
         // TODO make address configurable
         let listener = TcpListener::bind(ADDR).await?;
-        println!("Started listening on {}, join this server with code {}", ADDR, ipencoding::ip_to_code(ADDR.parse::<std::net::SocketAddrV4>().unwrap()));
+        println!(
+            "Started listening on {}, join this server with code {}",
+            ADDR,
+            ipencoding::ip_to_code(ADDR.parse::<std::net::SocketAddrV4>().unwrap())
+        );
         let mut tasks: Vec<task::JoinHandle<()>> = vec![];
 
         loop {
@@ -83,12 +98,18 @@ async fn main() -> io::Result<()> {
                 }
                 _ = accepter_shutdown_rx.recv() => {
                     for task in tasks.iter_mut() {
-                        task.await.unwrap();
+                        let stat = task.await;
+                        match stat {
+                            Ok(_) => {},
+                            Err(err) => {
+                                println!("Connection handler closed with error {:#?}", err);
+                            }
+                        };
                     }
                     break;
                 }
             };
-        };
+        }
         Ok(())
     });
 
@@ -98,7 +119,11 @@ async fn main() -> io::Result<()> {
         if ctrlc_transmitter.receiver_count() == 0 {
             return sig_res;
         }
-        ctrlc_transmitter.send(ShutdownMessage {reason: String::from("Server closed")}).unwrap();
+        ctrlc_transmitter
+            .send(ShutdownMessage {
+                reason: String::from("Server closed"),
+            })
+            .unwrap();
         sig_res
     });
 
