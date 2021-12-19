@@ -3,11 +3,11 @@ use tokio::net::TcpListener;
 use tokio::net::TcpStream;
 use tokio::task;
 use tokio::sync::broadcast::*;
+
 use api::utils::*;
 
 mod client_interface;
 use client_interface::*;
-
 mod conf;
 use conf::*;
 
@@ -16,11 +16,10 @@ struct ShutdownMessage {
     reason: String
 }
 
-#[inline]
 async fn handle_client(socket: TcpStream, addr: std::net::SocketAddr, shutdown_sender: &Sender<ShutdownMessage>) -> task::JoinHandle<()> {
     let mut client_shutdown_channel = shutdown_sender.subscribe();//make shure to like and
     tokio::spawn( async move {
-        let mut interface = ClientInterface::new(socket);
+        let mut interface = ClientInterface::new(socket, String::from(NAME));
         println!("Connected to {:?}, reported ip {:?}", addr, interface.get_client_addr().unwrap());
         loop {
             tokio::select! {

@@ -56,15 +56,17 @@ pub mod stati {
 pub struct ClientInterface {
     to_send: Queue<api::msg::Message>,
     incoming: Queue<api::msg::Message>,
+    server_name: String,
     socket: TcpStream,
 }
 
 impl ClientInterface {
-    pub fn new(sock: TcpStream) -> ClientInterface {
+    pub fn new(sock: TcpStream, name: String) -> ClientInterface {
         ClientInterface {
             to_send: queue![],
             incoming: queue![],
             socket: sock,
+            server_name: name,
         }
     }
 
