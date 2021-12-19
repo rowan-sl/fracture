@@ -3,9 +3,12 @@ use tokio::net::TcpListener;
 use tokio::net::TcpStream;
 use tokio::task;
 use tokio::sync::broadcast::*;
+use api::utils::*;
 
 mod client_interface;
 use client_interface::*;
+
+const ADDR: &str = "127.0.0.1:6142";
 
 #[derive(Clone, Debug)]
 struct ShutdownMessage {
@@ -23,7 +26,7 @@ async fn handle_client(socket: TcpStream, addr: std::net::SocketAddr, shutdown_s
                 stat = interface.update_read() => {
                     match stat {
                         stati::UpdateReadStatus::Disconnected => {
-                            println!("{:?} disconnected!", addr);
+                            println!("{:?} disconnected", addr);
                             interface.close(String::from(""), true).await;// do not notify the client of disconnecting, as it is already disconnected
                             break;
                         },
@@ -60,7 +63,8 @@ async fn main() -> io::Result<()> {
 
     let accepter_task: task::JoinHandle<io::Result<()>> = tokio::spawn(async move {
         // TODO make address configurable
-        let listener = TcpListener::bind("127.0.0.1:6142").await?;
+        let listener = TcpListener::bind(ADDR).await?;
+        println!("Started listening on {}, join this server with code {}", ADDR, ipencoding::ip_to_code(ADDR.parse::<std::net::SocketAddrV4>().unwrap()));
         let mut tasks: Vec<task::JoinHandle<()>> = vec![];
 
         loop {

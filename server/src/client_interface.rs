@@ -68,21 +68,23 @@ impl ClientInterface {
         }
     }
 
-
     /// Close the socket, optionaly notifying the client why it is being disconnected, and sending all queued messages
     pub async fn close(&mut self, reason: String, expect_alredy_shutdown: bool) {
         //TODO make it send a shutdown message and clear queue and stuff
         if !expect_alredy_shutdown {
             // only send queued messages if it isnt alredy shutdown (or at least know it is)
-            self.queue_message(api::msg::Message {data: api::msg::MessageVarient::ServerClosed {close_message: reason}}).unwrap();
+            self.queue_message(
+                api::msg::Message {
+                    data: api::msg::MessageVarient::ServerForceDisconnect {
+                        reason: api::msg::types::ServerForceDisconnectReason::Closed,
+                        close_message: reason
+                    }
+                }
+            ).unwrap();
             self.send_all_queued().await;
         }
         match self.socket.shutdown().await {
-            Ok(_) => {
-                if !expect_alredy_shutdown {
-                    println!("Socket was expected to be closed, but it is not!");
-                }
-            },
+            Ok(_) => {},
             Err(err) => {
                 //Socket is already shutdown
                 if err.kind() == std::io::ErrorKind::NotConnected {
@@ -170,8 +172,18 @@ impl ClientInterface {
     }
 
     /// Process a message, and queue apropreate responses for sending
-    pub async fn process(&mut self, _msg: api::msg::Message) {
-        //TODO implement this
+    pub async fn process(&mut self, msg: api::msg::Message) {
+        use api::msg::*;
+        match msg.data {
+            MessageVarient::Ping => {
+                self.queue_message(
+                    Message {
+                        data: MessageVarient::Pong
+                    }
+                ).unwrap();
+            },
+            _ => {}
+        };
     }
 
     /// Handles the reading message half of updating the client.

@@ -2,12 +2,29 @@ pub mod msg {
     use serde::Serialize;
     use serde::Deserialize;
 
+    pub mod types {
+        use super::*;
+        #[derive(Deserialize, Serialize, Debug, Clone)]
+        pub enum ServerForceDisconnectReason {
+            Closed,
+            Kicked,
+            IpBanned,
+            InvalidAuthentication,
+        }
+    }
 
     #[derive(Deserialize, Serialize, Debug, Clone)]
     pub enum MessageVarient {
         DisconnectMessage {},
-        ConnectMessage {},
-        ServerClosed {
+        /// Client sends this as its first message
+        ConnectMessage {
+            name: String
+        },
+        Ping,
+        Pong,
+        /// Server has kicked/disconnected the client for some reason
+        ServerForceDisconnect {
+            reason: types::ServerForceDisconnectReason,
             close_message: String
         }
     }
