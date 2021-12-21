@@ -12,7 +12,7 @@ pub mod seri {
         #[derive(Debug)]
         pub enum SerializationError {
             Generic,
-            BincodeErr (Box<bincode::ErrorKind>),
+            BincodeErr(Box<bincode::ErrorKind>),
         }
 
         #[derive(Debug)]
@@ -25,9 +25,9 @@ pub mod seri {
         pub enum GetMessageError {
             Disconnected,
             ReadError,
-            Error (std::io::Error),
-            HeaderParser (HeaderParserError),
-            DeserializationError (Box<bincode::ErrorKind>),
+            Error(std::io::Error),
+            HeaderParser(HeaderParserError),
+            DeserializationError(Box<bincode::ErrorKind>),
         }
     }
 

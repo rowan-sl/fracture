@@ -2,7 +2,7 @@ use tokio::net::TcpStream;
 use tokio::sync::broadcast::*;
 use tokio::task;
 
-use crate::client_interface:: { ClientInterface, stati };
+use crate::client_interface::{stati, ClientInterface};
 use crate::conf::NAME;
 
 #[derive(Clone, Debug)]

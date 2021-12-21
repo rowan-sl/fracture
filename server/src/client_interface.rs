@@ -55,7 +55,9 @@ pub mod stati {
 /// Generic trait for createing a message handler.
 /// All handlers must be Send
 pub trait MessageHandler {
-    fn new() -> Self where Self: Sized;
+    fn new() -> Self
+    where
+        Self: Sized;
 
     /// takes a message, potentialy handleing it.
     /// returns wether or not the message was handled (should the interface attempt to continue trying new handlers to handle it)
@@ -85,7 +87,11 @@ pub struct ClientInterface {
 }
 
 impl ClientInterface {
-    pub fn new(sock: TcpStream, name: String, handlers: Vec<Box<dyn MessageHandler + Send>>) -> ClientInterface {
+    pub fn new(
+        sock: TcpStream,
+        name: String,
+        handlers: Vec<Box<dyn MessageHandler + Send>>,
+    ) -> ClientInterface {
         ClientInterface {
             to_send: queue![],
             incoming: queue![],
@@ -229,32 +235,38 @@ impl ClientInterface {
                     MessageVarient::ConnectMessage { name: _ } => {
                         //TODO make this actulay handle users (with the user state handler)
                         self.state = InterfaceState::RecevedConnectMessage;
-                    },
+                    }
                     other => {
-                        println!("Recieved {:#?} from client {:?} instead of connect message!", other, self.get_client_addr());
-                        self.queue_message(
-                            Message {
-                                data: MessageVarient::ServerForceDisconnect {
-                                    close_message: format!("Recieved {:#?} instead of connect message!", other),
-                                    reason: types::ServerForceDisconnectReason::InvalidConnectionSequence,
-                                }
-                            }
-                        ).unwrap();
+                        println!(
+                            "Recieved {:#?} from client {:?} instead of connect message!",
+                            other,
+                            self.get_client_addr()
+                        );
+                        self.queue_message(Message {
+                            data: MessageVarient::ServerForceDisconnect {
+                                close_message: format!(
+                                    "Recieved {:#?} instead of connect message!",
+                                    other
+                                ),
+                                reason:
+                                    types::ServerForceDisconnectReason::InvalidConnectionSequence,
+                            },
+                        })
+                        .unwrap();
                     }
                 };
-            },
+            }
             InterfaceState::RecevedConnectMessage => {
-                self.queue_message(
-                    Message {
-                        data: MessageVarient::ServerInfo {
-                            name: self.server_name.clone(),
-                            conn_status: types::ConnectionStatus::Connected,
-                            connected_users: vec![]//TODO make this actulay send users instead of l y i n g
-                        }
-                    }
-                ).unwrap();
+                self.queue_message(Message {
+                    data: MessageVarient::ServerInfo {
+                        name: self.server_name.clone(),
+                        conn_status: types::ConnectionStatus::Connected,
+                        connected_users: vec![], //TODO make this actulay send users instead of l y i n g
+                    },
+                })
+                .unwrap();
                 self.state = InterfaceState::Ready;
-            },
+            }
             InterfaceState::Ready => {
                 // normal stuff handling
                 let mut handeld = false;

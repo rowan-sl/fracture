@@ -3,28 +3,28 @@ mod client_interface;
 mod client_tracker;
 mod conf;
 
-use tokio::io::{self};
-use tokio::net::TcpListener;
-use tokio::sync::broadcast::*;
-use tokio::task;
+use tokio::{
+    io,
+    net::TcpListener,
+    sync::broadcast::{channel, Receiver, Sender},
+    task,
+};
 
-use api::utils::*;
+use api::utils::ipencoding;
 
-use client_handler::*;
-use conf::*;
+use client_handler::{handle_client, ShutdownMessage};
+use conf::ADDR;
 
 #[tokio::main]
 async fn main() -> io::Result<()> {
-    let (shutdown_tx, _): (
-        Sender<ShutdownMessage>,
-        Receiver<ShutdownMessage>,
-    ) = channel(5);
+    let (shutdown_tx, _): (Sender<ShutdownMessage>, Receiver<ShutdownMessage>) = channel(5);
 
     let ctrlc_transmitter = shutdown_tx.clone();
 
     let accepter_task = get_client_listener(shutdown_tx);
     let wait_for_ctrlc = get_ctrlc_listener(ctrlc_transmitter);
 
+    // wait for ctrl+c, and then send the shutdown message, then wait for the other task to finish
     let (_ctrlc_res, _accepter_res) = tokio::join!(wait_for_ctrlc, accepter_task);
     Ok(())
 }
@@ -73,7 +73,9 @@ fn get_client_listener(shutdown_tx: Sender<ShutdownMessage>) -> task::JoinHandle
     })
 }
 
-fn get_ctrlc_listener(ctrlc_transmitter: Sender<ShutdownMessage>) -> task::JoinHandle<io::Result<()>> {
+fn get_ctrlc_listener(
+    ctrlc_transmitter: Sender<ShutdownMessage>,
+) -> task::JoinHandle<io::Result<()>> {
     tokio::spawn(async move {
         let sig_res = tokio::signal::ctrl_c().await;
         println!("\nRecieved ctrl+c, shutting down");
