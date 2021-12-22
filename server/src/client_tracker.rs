@@ -1,53 +1,17 @@
-use queues::{ Queue, IsQueue };
+/// User updates should not be used to maintain a accurate record of what users are connected by a client interface,
+/// and should instead be used (for example) to signal chat messages and similar things
+/// TODO make this work?
+
+use std::sync::Arc;
+use parking_lot::FairMutex;
+
 use uuid::Uuid;
+use tokio::sync::broadcast::*;
 
 #[derive(Clone)]
-enum UserStateUpdate {
-    Disconnected {
-        id: Uuid,
-        name: String,
-    },
-    Connected {
-        id: Uuid,
-        name: String,
-    }
-}
-
-struct TrackerSubscriber {
-    updates: Queue<UserStateUpdate>,
-    users: Vec<User>,
-}
-
-impl TrackerSubscriber {
-    fn new() -> TrackerSubscriber {
-        TrackerSubscriber {
-            updates: Queue::new(),
-            users: vec![],
-        }
-    }
-
-    fn get_by_id(&mut self, id: Uuid) -> Option<&User> {
-        for u in self.users.iter() {
-            if u.id == id {
-                return Some(&u);
-            }
-        }
-        return None;
-    }
-
-    /// Start tracking a new client
-    fn user_connected(&mut self, client: User) {
-        self.updates.add(UserStateUpdate::Connected { id: client.id_cpy(), name: client.name_cpy() }).unwrap();
-        self.users.push(client);
-    }
-
-    /// This will panic if the client is not connected
-    fn user_disconnect(&mut self, id: Uuid) {
-        let name = self.get_by_id(id).unwrap().name_cpy();
-        self.updates.add(UserStateUpdate::Disconnected { id: id, name: name }).unwrap();
-        let index = self.users.iter().position(|x| x.id == id).unwrap();
-        self.users.remove(index);
-    }
+enum UserUpdate {
+    Connected ( User ),
+    Disconnected ( User ),
 }
 
 #[derive(Clone)]
@@ -88,5 +52,28 @@ impl User {
     }
 }
 
+pub struct Subscription {
+    users: Arc<FairMutex<Vec<User>>>,
+    update_channel: Receiver<UserUpdate>,
+}
+
 /// Tracks all connected clients, and provides a way of subscribing to it
-struct ClientTracker {}
+struct ClientTracker {
+    core_update_tx: Sender<UserUpdate>,
+    users: Arc<FairMutex<Vec<User>>>
+}
+
+impl ClientTracker {
+    fn new(update_channel_limit: usize) -> ClientTracker {
+        let (update_tx, _): (Sender<UserUpdate>, Receiver<UserUpdate>) = channel(update_channel_limit);
+        ClientTracker {
+            core_update_tx: update_tx,
+            users: Arc::new(FairMutex::new(Vec::new()))//let the chain b e g i n
+        }
+    }
+
+    fn user_connects(&mut self, user: User) {
+        let _ = self.core_update_tx.send(UserUpdate::Connected(user.clone()));//we dont care about the result bc it could only tell us that no one is listening
+
+    }
+}

@@ -5,8 +5,9 @@ pub mod msg {
     pub mod types {
         use super::*;
         #[derive(Deserialize, Serialize, Debug, Clone)]
-        pub enum ServerForceDisconnectReason {
+        pub enum ServerDisconnectReason {
             Closed,
+            ClientRequestedDisconnect,
             // all of these \/ are unused
             //TODO implement
             Kicked,
@@ -74,9 +75,26 @@ pub mod msg {
 
         /// Server has kicked/disconnected the client for some reason
         ServerForceDisconnect {
-            reason: types::ServerForceDisconnectReason,
+            reason: types::ServerDisconnectReason,
             close_message: String,
         },
+
+        /// A chat message to be distributed and sent to other clients.
+        ///TODO
+        IncomingChatMessage {
+            content: String,
+        },
+
+        /// A chat message to be received and handled by the client.
+        ///TODO
+        OutgoingChatMessage {
+            sender: String,
+
+            //This is a u128 not uuid::Uuid, as that does not implement Serialize/Deseraialize :/
+            //use Uuid.as_u128 to get this version
+            uuid: u128,
+            message: String,
+        }
     }
 
     /// Hello, hello, can you hear me?

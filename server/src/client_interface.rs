@@ -1,7 +1,9 @@
 //TODO make user state manager to store connected users and send updates and stuff
 //TODO implement and test a message handler
+//TODO implement handler operations
 
 use api::header::HEADER_LEN;
+use api::msg;
 use queues::queue;
 use queues::IsQueue;
 use queues::Queue;
@@ -47,9 +49,26 @@ pub mod stati {
     #[derive(Debug)]
     pub enum UpdateReadStatus {
         Disconnected,
+        GracefullDisconnect,
         Sucsess,
         ReadError(ReadMessageError),
     }
+}
+
+/// Operations that a MessageHandler can request occur
+pub enum HandlerOperation {
+    /// Send a public message to all other users
+    SendPublicMessage {
+        msg: msg::Message,
+    },
+    /// Send a message back to the client
+    SendSelfMessage {
+        msg: msg::Message,
+    },
+    /// Send a chat message to all other clients
+    SendChatMessage {
+        message_content: String,
+    },
 }
 
 /// Generic trait for createing a message handler.
@@ -62,6 +81,9 @@ pub trait MessageHandler {
     /// takes a message, potentialy handleing it.
     /// returns wether or not the message was handled (should the interface attempt to continue trying new handlers to handle it)
     fn handle(&mut self, msg: &api::msg::Message) -> bool;
+
+    /// Get operations that the handler is requesting the interface do
+    fn get_operations(&mut self) -> Option<Vec<HandlerOperation>>;
 }
 
 //TODO this
@@ -83,6 +105,8 @@ pub struct ClientInterface {
     /// Handlers for messages, to be asked to handle new incoming messages
     handlers: Vec<Box<dyn MessageHandler + Send>>,
     server_name: String,
+    client_name: Option<String>,
+    uuid: uuid::Uuid,
     socket: TcpStream,
 }
 
@@ -99,22 +123,52 @@ impl ClientInterface {
             handlers: handlers,
             socket: sock,
             server_name: name,
+            client_name: None,
+            uuid: uuid::Uuid::new_v4(),
         }
     }
 
-    /// Close the socket, optionaly notifying the client why it is being disconnected, and sending all queued messages
-    pub async fn close(&mut self, reason: String, expect_alredy_shutdown: bool) {
+    /// Get the name of the connected client (it names itself).
+    /// Will return None if the client has not sent connection data yet
+    pub fn name(&self) -> Option<String> {
+        return self.client_name.clone();
+    }
+
+    /// Get the uuid of the client.
+    /// this is not specified by the client, but generated randomly on initialization.
+    pub fn uuid(&self) -> uuid::Uuid {
+        return self.uuid.clone();
+    }
+
+    /// Close the socket, optionaly notifying the client why it is being disconnected
+    /// does NOT send any queued messages, as that is kinda pointless since the client could not reply and may become confused
+    pub async fn close(&mut self, reason: String, expect_alredy_shutdown: bool, client_requested: bool) {
         //TODO make it send a shutdown message and clear queue and stuff
         if !expect_alredy_shutdown {
             // only send queued messages if it isnt alredy shutdown (or at least know it is)
-            self.queue_message(api::msg::Message {
+            let dconn_reason = match client_requested {
+                true => api::msg::types::ServerDisconnectReason::ClientRequestedDisconnect,
+                false => api::msg::types::ServerDisconnectReason::Closed,
+            };
+            match self.send_message(api::msg::Message {
                 data: api::msg::MessageVarient::ServerForceDisconnect {
-                    reason: api::msg::types::ServerForceDisconnectReason::Closed,
+                    reason: dconn_reason,
                     close_message: reason,
                 },
-            })
-            .unwrap();
-            self.send_all_queued().await;
+            }).await {
+                stati::SendStatus::Failure(err) => {
+                    match err.kind() {
+                        std::io::ErrorKind::NotConnected => {
+                            println!("During shutdown: Expected to be connected, but was not!\n{:#?}", err);
+                        },
+                        _ => {
+                            println!("Error whilst sending shutdown msg!\n{:#?}", err);
+                        }
+                    };
+                },
+                stati::SendStatus::SeriError(_) => panic!("Could not serialize shutdown msg"),
+                _ => {},
+            };
         }
         match self.socket.shutdown().await {
             Ok(_) => {}
@@ -157,7 +211,7 @@ impl ClientInterface {
                 match serialized_msg_res {
                     Ok(mut serialized_msg) => {
                         let wrote_size = serialized_msg.size();
-                        let b_data = serialized_msg.as_bytes();
+                        let b_data = serialized_msg.into_bytes();
                         let write_status = self.socket.write_all(&b_data).await;
                         match write_status {
                             Ok(_) => stati::SendStatus::Sent(wrote_size),
@@ -168,6 +222,22 @@ impl ClientInterface {
                 }
             }
             Err(_err) => stati::SendStatus::NoTask, //Do nothing as there is nothing to do ;)
+        }
+    }
+
+    async fn send_message(&mut self, message: api::msg::Message) -> stati::SendStatus {
+        let serialized_msg_res = api::seri::serialize(&message);
+        match serialized_msg_res {
+            Ok(mut serialized_msg) => {
+                let wrote_size = serialized_msg.size();
+                let b_data = serialized_msg.into_bytes();
+                let write_status = self.socket.write_all(&b_data).await;
+                match write_status {
+                    Ok(_) => stati::SendStatus::Sent(wrote_size),
+                    Err(err) => stati::SendStatus::Failure(err),
+                }
+            }
+            Err(err) => stati::SendStatus::SeriError(err),
         }
     }
 
@@ -215,7 +285,7 @@ impl ClientInterface {
 
     /// Process a message, and queue apropreate responses for sending
     /// returns if the message was handled or not
-    pub async fn process(&mut self, msg: api::msg::Message) -> bool {
+    async fn process(&mut self, msg: api::msg::Message) -> bool {
         // The ping message should always be a valid thing to send/rcv
         use api::msg::*;
         match msg.data {
@@ -232,8 +302,9 @@ impl ClientInterface {
         match self.state {
             InterfaceState::Start => {
                 match msg.data {
-                    MessageVarient::ConnectMessage { name: _ } => {
-                        //TODO make this actulay handle users (with the user state handler)
+                    MessageVarient::ConnectMessage { name } => {
+                        //TODO make this actulay handle users (with the user state handler) (mabey later)
+                        self.client_name = Some(name);
                         self.state = InterfaceState::RecevedConnectMessage;
                     }
                     other => {
@@ -249,7 +320,7 @@ impl ClientInterface {
                                     other
                                 ),
                                 reason:
-                                    types::ServerForceDisconnectReason::InvalidConnectionSequence,
+                                    types::ServerDisconnectReason::InvalidConnectionSequence,
                             },
                         })
                         .unwrap();
@@ -294,12 +365,19 @@ impl ClientInterface {
         let read = self.read_msg().await;
         match read {
             Ok(stat) => {
-                let added = self.incoming.add(stat.msg);
-                if added.is_err() {
-                    panic!("Could not queue message for sending!");
-                } else {
-                    return stati::UpdateReadStatus::Sucsess;
-                }
+                match stat.msg.data {
+                    msg::MessageVarient::DisconnectMessage {} => {
+                        return stati::UpdateReadStatus::GracefullDisconnect;
+                    },
+                    _ => {
+                        let added = self.incoming.add(stat.msg);
+                        if added.is_err() {
+                            panic!("Could not queue message for sending!");
+                        } else {
+                            return stati::UpdateReadStatus::Sucsess;
+                        }
+                    }
+                };
             }
             Err(err) => {
                 match err {

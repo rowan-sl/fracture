@@ -38,7 +38,7 @@ pub mod seri {
 
     impl SerializedMessage {
         /// Returns self as bytes, a combination of bolth the Header, and then the Message, droping the SerializedMessage it was called on
-        pub fn as_bytes(&mut self) -> Vec<u8> {
+        pub fn into_bytes(&mut self) -> Vec<u8> {
             let mut result = bytes2vec(self.header.to_bytes());
             result.append(&mut self.message_bytes);
             drop(self);
@@ -75,7 +75,7 @@ pub mod seri {
     /// including the part where it will panic, so if that is not desierable, DO IT DIFFERENTLY
     /// this is mostly meant as a quick way to test new things, and not intended for final use
     pub async fn fullsend(msg: &Message, socket: &mut TcpStream) {
-        let encoded = self::serialize(&msg).unwrap().as_bytes();
+        let encoded = self::serialize(&msg).unwrap().into_bytes();
         socket.write_all(&encoded).await.unwrap();
     }
 

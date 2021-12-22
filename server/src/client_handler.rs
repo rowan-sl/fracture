@@ -29,7 +29,7 @@ pub async fn handle_client(
                     match stat {
                         stati::UpdateReadStatus::Disconnected => {
                             println!("{:?} disconnected", addr);
-                            interface.close(String::from(""), true).await;// do not notify the client of disconnecting, as it is already disconnected
+                            interface.close(String::from(""), true, false).await;// do not notify the client of disconnecting, as it is already disconnected
                             break;
                         },
                         stati::UpdateReadStatus::ReadError ( err ) => {
@@ -40,13 +40,18 @@ pub async fn handle_client(
                                 }
                             }
                         },
+                        stati::UpdateReadStatus::GracefullDisconnect => {
+                            println!("{:?} gracefully disconnected", addr);
+                            interface.close(String::from(""), false, true).await;
+                            break;
+                        },
                         stati::UpdateReadStatus::Sucsess => {}
                     }
                 }
                 smsg = client_shutdown_channel.recv() => {
                     println!("Closing connection to {:?}", addr);
                     interface.update_process_all().await;
-                    interface.close(smsg.unwrap().reason, false).await;
+                    interface.close(smsg.unwrap().reason, false, false).await;
                     break;
                 }
             };
