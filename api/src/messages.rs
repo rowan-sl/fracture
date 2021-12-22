@@ -54,9 +54,10 @@ pub mod msg {
         /// Server sends this after client sends ConnectMessage, with info about the server
         /// should not be sent any other time
         ServerInfo {
-            name: String,
+            server_name: String,
             conn_status: types::ConnectionStatus,
             connected_users: Vec<types::UserNameUpdate>,
+            your_uuid: u128,
         },
 
         //TODO this
@@ -81,9 +82,7 @@ pub mod msg {
 
         /// A chat message to be distributed and sent to other clients.
         ///TODO
-        IncomingChatMessage {
-            content: String,
-        },
+        IncomingChatMessage { content: String },
 
         /// A chat message to be received and handled by the client.
         ///TODO
@@ -94,7 +93,7 @@ pub mod msg {
             //use Uuid.as_u128 to get this version
             uuid: u128,
             message: String,
-        }
+        },
     }
 
     /// Hello, hello, can you hear me?

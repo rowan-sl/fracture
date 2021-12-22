@@ -138,6 +138,7 @@ dependencies = [
  "queues",
  "serde",
  "tokio",
+ "uuid",
 ]
 
 [[package]]

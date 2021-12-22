@@ -10,8 +10,6 @@ pub fn ping() -> Message {
 
 pub fn gen_connect(name: String) -> Message {
     Message {
-        data: MessageVarient::ConnectMessage {
-            name: name,
-        }
+        data: MessageVarient::ConnectMessage { name: name },
     }
 }

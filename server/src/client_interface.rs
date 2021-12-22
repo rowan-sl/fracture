@@ -58,17 +58,11 @@ pub mod stati {
 /// Operations that a MessageHandler can request occur
 pub enum HandlerOperation {
     /// Send a public message to all other users
-    SendPublicMessage {
-        msg: msg::Message,
-    },
+    SendPublicMessage { msg: msg::Message },
     /// Send a message back to the client
-    SendSelfMessage {
-        msg: msg::Message,
-    },
+    SendSelfMessage { msg: msg::Message },
     /// Send a chat message to all other clients
-    SendChatMessage {
-        message_content: String,
-    },
+    SendChatMessage { message_content: String },
 }
 
 /// Generic trait for createing a message handler.
@@ -142,7 +136,12 @@ impl ClientInterface {
 
     /// Close the socket, optionaly notifying the client why it is being disconnected
     /// does NOT send any queued messages, as that is kinda pointless since the client could not reply and may become confused
-    pub async fn close(&mut self, reason: String, expect_alredy_shutdown: bool, client_requested: bool) {
+    pub async fn close(
+        &mut self,
+        reason: String,
+        expect_alredy_shutdown: bool,
+        client_requested: bool,
+    ) {
         //TODO make it send a shutdown message and clear queue and stuff
         if !expect_alredy_shutdown {
             // only send queued messages if it isnt alredy shutdown (or at least know it is)
@@ -150,24 +149,30 @@ impl ClientInterface {
                 true => api::msg::types::ServerDisconnectReason::ClientRequestedDisconnect,
                 false => api::msg::types::ServerDisconnectReason::Closed,
             };
-            match self.send_message(api::msg::Message {
-                data: api::msg::MessageVarient::ServerForceDisconnect {
-                    reason: dconn_reason,
-                    close_message: reason,
-                },
-            }).await {
+            match self
+                .send_message(api::msg::Message {
+                    data: api::msg::MessageVarient::ServerForceDisconnect {
+                        reason: dconn_reason,
+                        close_message: reason,
+                    },
+                })
+                .await
+            {
                 stati::SendStatus::Failure(err) => {
                     match err.kind() {
                         std::io::ErrorKind::NotConnected => {
-                            println!("During shutdown: Expected to be connected, but was not!\n{:#?}", err);
-                        },
+                            println!(
+                                "During shutdown: Expected to be connected, but was not!\n{:#?}",
+                                err
+                            );
+                        }
                         _ => {
                             println!("Error whilst sending shutdown msg!\n{:#?}", err);
                         }
                     };
-                },
+                }
                 stati::SendStatus::SeriError(_) => panic!("Could not serialize shutdown msg"),
-                _ => {},
+                _ => {}
             };
         }
         match self.socket.shutdown().await {
@@ -319,8 +324,7 @@ impl ClientInterface {
                                     "Recieved {:#?} instead of connect message!",
                                     other
                                 ),
-                                reason:
-                                    types::ServerDisconnectReason::InvalidConnectionSequence,
+                                reason: types::ServerDisconnectReason::InvalidConnectionSequence,
                             },
                         })
                         .unwrap();
@@ -330,9 +334,10 @@ impl ClientInterface {
             InterfaceState::RecevedConnectMessage => {
                 self.queue_message(Message {
                     data: MessageVarient::ServerInfo {
-                        name: self.server_name.clone(),
+                        server_name: self.server_name.clone(),
                         conn_status: types::ConnectionStatus::Connected,
-                        connected_users: vec![], //TODO make this actulay send users instead of l y i n g
+                        connected_users: vec![], //TODO make this actulay send users instead of l y i n g (so many lies)
+                        your_uuid: self.uuid.as_u128(),
                     },
                 })
                 .unwrap();
@@ -368,7 +373,7 @@ impl ClientInterface {
                 match stat.msg.data {
                     msg::MessageVarient::DisconnectMessage {} => {
                         return stati::UpdateReadStatus::GracefullDisconnect;
-                    },
+                    }
                     _ => {
                         let added = self.incoming.add(stat.msg);
                         if added.is_err() {
