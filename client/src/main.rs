@@ -9,7 +9,6 @@ use tokio::join;
 use tokio::net::TcpStream;
 use tokio::sync::broadcast::{channel, Receiver, Sender};
 use tokio::task;
-use uuid::Bytes;
 use uuid::Uuid;
 
 use api::msg;
@@ -71,24 +70,22 @@ pub mod stati {
     pub enum UpdateStatus {
         Unexpected(msg::Message),
         Success,
-        Unhandled,
+        Unhandled(msg::Message),
         ConnectionRefused,
         Noop,
     }
 }
 
 /// For stuff to interact with the user
+#[derive(Clone, Copy, Debug)]
 enum InterfaceOperation {
 
 }
 
-//TODO
+//TODO add more of these
 /// Operations that a MessageHandler can request occur
+#[derive(Clone, Copy, Debug)]
 enum HandlerOperation {
-    /// Send a public message to all other users
-    SendMessage { msg: msg::Message },
-    /// Send a chat message to all other clients
-    SendChatMessage { message_content: String },
     /// Do a program operation
     InterfaceOperation (InterfaceOperation)
 }
@@ -129,16 +126,21 @@ struct Client {
     sock: TcpStream,
     incoming: Queue<msg::Message>,
     outgoing: Queue<msg::Message>,
+    /// Pending handler operations
+    pending_op: Queue<HandlerOperation>,
+    handlers: Vec<Box<dyn MessageHandler + Send>>,
     server_info: Option<ServerInfo>,
     state: ClientState,
 }
 
 impl Client {
-    pub fn new(sock: TcpStream) -> Client {
+    pub fn new(sock: TcpStream, handlers: Vec<Box<dyn MessageHandler + Send>>) -> Client {
         Client {
             sock: sock,
             incoming: queue![],
             outgoing: queue![],
+            pending_op: queue![],
+            handlers: handlers,
             server_info: None,
             state: ClientState::Begin,
         }
@@ -412,7 +414,8 @@ impl Client {
                                         return stati::UpdateStatus::ConnectionRefused;
                                     }
                                     _ => {}
-                                }
+                                };
+                                println!("Connected to: {}", server_name);
                                 let real_uuid = Uuid::from_u128(your_uuid);
                                 self.server_info = Some(ServerInfo {
                                     client_uuid: real_uuid,
@@ -431,7 +434,70 @@ impl Client {
                 };
             }
             Ready => {
-                return Noop;
+                let msg = match self.incoming.remove() {
+                    Ok(m) => {m}
+                    Err(_) => {
+                        return Noop;
+                    }
+                };
+                let mut handeld = false;
+                for h in self.handlers.iter_mut() {
+                    let result = h.handle(&msg);
+                    if result {
+                        handeld = true;
+                        break;
+                    }
+                }
+                if handeld {
+                    return Success;
+                } else {
+                    return Unhandled(msg);
+                }
+            }
+        };
+    }
+
+    /// Collects pending actions from handlers and stores them internaly
+    pub fn collect_actions(&mut self) {
+        for h in self.handlers.iter_mut() {
+            let new_op = h.get_operations();
+            match new_op {
+                Some(ops) => {
+                    for op in ops {
+                        self.pending_op.add(op).unwrap();
+                    }
+                }
+                None => {}
+            };
+        };
+    }
+
+    /// Handles one handler action, returning it if it requires further processing by other code (interface operations)
+    ///
+    /// Errors: if it does not know what to do with the operation
+    ///
+    /// Ok(Some()) -> you need to deal with it
+    ///
+    /// Ok(None) -> you dont have to do anything
+    ///
+    /// Err(Some()) -> we dont know what to do with this
+    ///
+    /// Err(None) -> Nothing to do
+    pub async fn execute_action(&mut self) -> Result<Option<HandlerOperation>, Option<HandlerOperation>> {
+        let op = self.pending_op.remove();
+        match op {
+            Ok(op) => {
+                match op {
+                    HandlerOperation::InterfaceOperation (_inter_op) => {
+                        return Ok(Some(op));
+                    }
+                    _ => {
+                        return Err(Some(op));
+                    }
+                };
+            }
+            Err(_) => {
+                return Err(None);
             }
         };
     }
@@ -439,13 +505,118 @@ impl Client {
 
 #[tokio::main]
 async fn main() {
-    let stream = TcpStream::connect("127.0.0.1:6142").await.unwrap();
+    let stream = TcpStream::connect(conf::ADDR).await.unwrap();
     let (shutdown_tx, _): (Sender<ShutdownMessage>, Receiver<ShutdownMessage>) = channel(5);
     let ctrlc_transmitter = shutdown_tx.clone();
 
     let main_task = tokio::spawn(async move {
-        let close_rcv = shutdown_tx.subscribe();
-        let client = Client::new(stream);
+        let mut close_rcv = shutdown_tx.subscribe();
+        let mut client = Client::new(stream, vec![]);
+        loop {
+            tokio::select! {
+                stat = client.update_read() => {
+                    match stat {
+                        stati::UpdateReadStatus::ServerClosed { reason, close_message } => {
+                            use msg::types::ServerDisconnectReason;
+                            match reason {
+                                ServerDisconnectReason::ClientRequestedDisconnect => {
+                                    println!("this should never happen...");
+                                }
+                                ServerDisconnectReason::Closed => {
+                                    println!("Server closed with message {}", close_message);
+                                }
+                                ServerDisconnectReason::InvalidConnectionSequence => {
+                                    println!("Kicked for invalid connection sequence:\n{}", close_message);
+                                }
+                            }
+                            client.close(stati::CloseType::ServerDisconnected).await;
+                            break;
+                        }
+                        stati::UpdateReadStatus::ServerDisconnect => {
+                            println!("Server disconnected!");
+                            client.close(stati::CloseType::ServerDisconnected).await;
+                            break;
+                        }
+                        stati::UpdateReadStatus::ReadError (err) => {
+                            eprintln!("Error whilst reading message!\n{:#?}", err);
+                            client.close(stati::CloseType::Force).await;
+                            break;
+                        }
+                        stati::UpdateReadStatus::Success => {
+                            //TODO implement client update logic here
+                            match client.update().await {
+                                stati::UpdateStatus::ConnectionRefused => {
+                                    //TODO this should actualy never happen, so remove it or implement it
+                                    println!("Connection to server refused!");
+                                    client.close(stati::CloseType::ServerDisconnected).await;
+                                    break;
+                                }
+                                stati::UpdateStatus::Unexpected (msg) => {
+                                    //TODO make this a error
+                                    println!("Unexpected message {:#?}", msg);
+                                }
+                                stati::UpdateStatus::Unhandled (msg) => {
+                                    //TODO make this a error too
+                                    println!("Unhandled message:\n{:#?}", msg);
+                                }
+                                _ => {}//these should be Noop and Success, so no issue ignoring them
+                            };
+                            client.collect_actions();
+                            loop {
+                                match client.execute_action().await {
+                                    Err(oper) => {
+                                        match oper {
+                                            Some(unexpected_op) => {
+                                                // a message was not explicitly pased on or dealt with
+                                                //TODO make this a error
+                                                println!("Unhandled operation:\n{:#?}", oper);
+                                            }
+                                            None => {
+                                                break;
+                                            }
+                                        }
+                                    }
+                                    Ok(pos_msg) => {
+                                        match pos_msg {
+                                            Some(_msg) => {
+                                                //TODO add handling things here
+                                            }
+                                            None => {}
+                                        };
+                                    }
+                                };
+                            }
+                            match client.send_all_queued().await {
+                                stati::MultiSendStatus::Failure (ms_err) => {
+                                    match ms_err {
+                                        stati::SendStatus::Failure (err) => {
+                                            if err.kind() == std::io::ErrorKind::NotConnected {
+                                                println!("Disconnected!");
+                                            } else {
+                                                eprintln!("Error while sending message:\n{:#?}", err);
+                                            }
+                                            client.close(stati::CloseType::ServerDisconnected).await;
+                                            break;
+                                        }
+                                        stati::SendStatus::SeriError (err) => {
+                                            panic!("Could not serialize msessage:\n{:#?}", err);
+                                        }
+                                        _ => {panic!()}//this should not happen
+                                    }
+                                }
+                                _ => {}//just nothing to do or worked, we dont care
+                            }
+                        }
+                    };
+                }
+                _ = close_rcv.recv() => {
+                    println!("Disconnecting from {:?}", conf::ADDR);
+                    client.close(stati::CloseType::Graceful).await;
+                    break;
+                }
+            };
+        }
+        println!("Exiting");
     });
     join!(main_task, get_ctrlc_listener(ctrlc_transmitter));
 }

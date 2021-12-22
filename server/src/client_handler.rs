@@ -55,9 +55,6 @@ pub async fn handle_client(
                     break;
                 }
             };
-
-            interface.update_process_all().await;
-            interface.send_all_queued().await;
         }
         println!("Connection to {:?} closed", addr);
     })

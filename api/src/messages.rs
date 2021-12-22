@@ -8,10 +8,6 @@ pub mod msg {
         pub enum ServerDisconnectReason {
             Closed,
             ClientRequestedDisconnect,
-            // all of these \/ are unused
-            //TODO implement
-            Kicked,
-            IpBanned,
             InvalidConnectionSequence,
         }
 
