@@ -3,6 +3,7 @@ use tokio::sync::broadcast::Sender;
 use tokio::task;
 
 use api::utils::wait_100ms;
+use api::stat;
 
 use crate::conf::NAME;
 use crate::interface::core::{stati, ClientInterface};
@@ -36,7 +37,7 @@ pub async fn handle_client(
                             break;
                         },
                         stati::UpdateReadStatus::ReadError ( err_or_disconnect ) => {
-                            use stati::ReadMessageError::{DeserializationError, HeaderParser, ReadError, Disconnected};
+                            use stat::ReadMessageError::{DeserializationError, HeaderParser, ReadError, Disconnected};
                             match err_or_disconnect {
                                 Disconnected => {}, // already handeled, should never occur
                                 err => {
@@ -67,7 +68,7 @@ pub async fn handle_client(
                     interface.update_process_all().await;
                     if let stati::MultiSendStatus::Failure(err) = interface.send_all_queued().await {
                         match err {
-                            stati::SendStatus::Failure (ioerr) => {
+                            stat::SendStatus::Failure (ioerr) => {
                                 if ioerr.kind() == std::io::ErrorKind::NotConnected {
                                     println!("{:?} disconnected", addr);
                                     interface.close(String::from(""), true, false).await;// do not notify the client of disconnecting, as it is already disconnected
@@ -76,7 +77,7 @@ pub async fn handle_client(
                                 }
                                 break;
                             }
-                            stati::SendStatus::SeriError (serr) => {
+                            stat::SendStatus::SeriError (serr) => {
                                 panic!("Could not serialize message:\n{:#?}", serr);
                             }
                             _ => {}

@@ -11,6 +11,7 @@ use tokio::task::JoinHandle;
 
 use api::msg;
 use api::utils::wait_100ms;
+use api::stat;
 
 use client::Client;
 use types::{stati, ShutdownMessage};
@@ -106,7 +107,7 @@ fn get_main_task(shutdown_tx: Sender<ShutdownMessage>, stream: TcpStream) -> Joi
                     }
                     if let stati::MultiSendStatus::Failure (ms_err) = client.send_all_queued().await {//we only care about failure here
                         match ms_err {
-                            stati::SendStatus::Failure (err) => {
+                            stat::SendStatus::Failure (err) => {
                                 if err.kind() == std::io::ErrorKind::NotConnected {
                                     println!("Disconnected!");
                                 } else {
@@ -115,7 +116,7 @@ fn get_main_task(shutdown_tx: Sender<ShutdownMessage>, stream: TcpStream) -> Joi
                                 client.close(stati::CloseType::ServerDisconnected).await;
                                 break;
                             }
-                            stati::SendStatus::SeriError (err) => {
+                            stat::SendStatus::SeriError (err) => {
                                 panic!("Could not serialize msessage:\n{:#?}", err);
                             }
                             _ => {panic!()}//this should not happen

@@ -1,28 +1,11 @@
 pub mod stati {
     use api::msg;
-    use api::seri;
-
-    #[derive(Debug)]
-    pub enum SendStatus {
-        Sent(usize),
-        NoTask,
-        Failure(std::io::Error),
-        SeriError(seri::res::SerializationError),
-    }
 
     #[derive(Debug)]
     pub enum MultiSendStatus {
         Worked { amnt: u32, bytes: u128 },
-        Failure(SendStatus),
+        Failure(api::stat::SendStatus),
         NoTask,
-    }
-
-    #[derive(Debug)]
-    pub enum ReadMessageError {
-        Disconnected,
-        ReadError(std::io::Error),
-        HeaderParser(api::msg::HeaderParserError),
-        DeserializationError(Box<bincode::ErrorKind>),
     }
 
     #[derive(Debug)]
@@ -47,7 +30,7 @@ pub mod stati {
             close_message: String,
         },
         ServerDisconnect,
-        ReadError(ReadMessageError),
+        ReadError(api::stat::ReadMessageError),
         Success,
     }
 

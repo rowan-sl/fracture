@@ -1,18 +1,31 @@
 use tokio::net::TcpStream;
+use tokio::io::AsyncWriteExt;
 
-#[derive(Debug)]
-pub struct ReadMessageStatus {
-    pub msg: crate::msg::Message,
-    pub bytes: usize,
+pub mod stat {
+    #[derive(Debug)]
+    pub enum SendStatus {
+        Sent(usize),
+        NoTask,
+        Failure(std::io::Error),
+        SeriError(crate::seri::res::SerializationError),
+    }
+
+    #[derive(Debug)]
+    pub struct ReadMessageStatus {
+        pub msg: crate::msg::Message,
+        pub bytes: usize,
+    }
+
+    #[derive(Debug)]
+    pub enum ReadMessageError {
+        Disconnected,
+        ReadError(std::io::Error),
+        HeaderParser(crate::msg::HeaderParserError),
+        DeserializationError(Box<bincode::ErrorKind>),
+    }
 }
 
-#[derive(Debug)]
-pub enum ReadMessageError {
-    Disconnected,
-    ReadError(std::io::Error),
-    HeaderParser(crate::msg::HeaderParserError),
-    DeserializationError(Box<bincode::ErrorKind>),
-}
+use stat::{ReadMessageError, ReadMessageStatus, SendStatus};
 
 /// Some utils for dealing with sockets on a struct (reading and writing)
 #[async_trait::async_trait]
@@ -92,6 +105,23 @@ pub trait SocketUtils {
                 }
             }
             Err(err) => Err(ReadMessageError::HeaderParser(err)),
+        }
+    }
+
+    async fn send_message(&mut self, message: crate::msg::Message) -> SendStatus {
+        let socket = self.get_sock();
+        let serialized_msg_res = crate::seri::serialize(&message);
+        match serialized_msg_res {
+            Ok(mut serialized_msg) => {
+                let wrote_size = serialized_msg.size();
+                let b_data = serialized_msg.into_bytes();
+                let write_status = socket.write_all(&b_data).await;
+                match write_status {
+                    Ok(_) => SendStatus::Sent(wrote_size),
+                    Err(err) => SendStatus::Failure(err),
+                }
+            }
+            Err(err) => SendStatus::SeriError(err),
         }
     }
 }
