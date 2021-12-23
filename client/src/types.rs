@@ -56,21 +56,6 @@ pub enum HandlerOperation {
     InterfaceOperation(InterfaceOperation),
 }
 
-/// Generic trait for createing a message handler.
-/// All handlers must be Send
-pub trait MessageHandler {
-    fn new() -> Self
-    where
-        Self: Sized;
-
-    /// takes a message, potentialy handleing it.
-    /// returns wether or not the message was handled (should the interface attempt to continue trying new handlers to handle it)
-    fn handle(&mut self, msg: &api::msg::Message) -> bool;
-
-    /// Get operations that the handler is requesting the interface do
-    fn get_operations(&mut self) -> Option<Vec<HandlerOperation>>;
-}
-
 pub enum ClientState {
     /// nothing has happened
     Begin,

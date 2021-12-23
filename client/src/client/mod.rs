@@ -9,9 +9,10 @@ use api::msg;
 use api::seri;
 use api::SocketUtils;
 use api::stat::SendStatus;
+use api::handler::MessageHandler;
 
 use crate::conf;
-use crate::types::{stati, ClientState, HandlerOperation, MessageHandler, ServerInfo};
+use crate::types::{stati, ClientState, HandlerOperation, ServerInfo};
 
 pub struct Client {
     sock: TcpStream,
@@ -19,13 +20,13 @@ pub struct Client {
     outgoing: Queue<msg::Message>,
     /// Pending handler operations
     pending_op: Queue<HandlerOperation>,
-    handlers: Vec<Box<dyn MessageHandler + Send>>,
+    handlers: Vec<Box<dyn MessageHandler<Operation = HandlerOperation> + Send>>,
     server_info: Option<ServerInfo>,
     state: ClientState,
 }
 
 impl Client {
-    pub fn new(sock: TcpStream, handlers: Vec<Box<dyn MessageHandler + Send>>) -> Self {
+    pub fn new(sock: TcpStream, handlers: Vec<Box<dyn MessageHandler<Operation = HandlerOperation> + Send>>) -> Self {
         Self {
             sock,
             incoming: queue![],

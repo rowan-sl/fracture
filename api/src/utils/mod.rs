@@ -4,6 +4,6 @@ use tokio::time::Duration;
 pub mod ipencoding;
 
 #[inline]
-pub async fn wait_100ms() {
+pub async fn wait_update_time() {//used in update loops
     sleep(Duration::from_millis(100)).await;
 }

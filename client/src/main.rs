@@ -10,7 +10,7 @@ use tokio::task;
 use tokio::task::JoinHandle;
 
 use api::msg;
-use api::utils::wait_100ms;
+use api::utils::wait_update_time;
 use api::stat;
 
 use client::Client;
@@ -65,7 +65,7 @@ fn get_main_task(shutdown_tx: Sender<ShutdownMessage>, stream: TcpStream) -> Joi
                         stati::UpdateReadStatus::Success => {}//dont do anything, updates are handled seperatly
                     };
                 }
-                _ = wait_100ms() => {// client update loop
+                _ = wait_update_time() => {// client update loop
                     match client.update().await {
                         stati::UpdateStatus::ConnectionRefused => {
                             //TODO this should actualy never happen, so remove it or implement it

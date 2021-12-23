@@ -11,6 +11,7 @@ use tokio::net::TcpStream;
 use api::msg;
 use api::stat;
 use api::SocketUtils;
+use api::handler::MessageHandler;
 
 pub mod stati {
     use api::stat;
@@ -47,21 +48,6 @@ pub enum HandlerOperation {
     Chat { message_content: String },
 }
 
-/// Generic trait for createing a message handler.
-/// All handlers must be `Send`
-pub trait MessageHandler {
-    fn new() -> Self
-    where
-        Self: Sized;
-
-    /// takes a message, potentialy handleing it.
-    /// returns wether or not the message was handled (should the interface attempt to continue trying new handlers to handle it)
-    fn handle(&mut self, msg: &api::msg::Message) -> bool;
-
-    /// Get operations that the handler is requesting the interface do
-    fn get_operations(&mut self) -> Option<Vec<HandlerOperation>>;
-}
-
 //TODO this
 pub enum InterfaceState {
     /// Begining state, in this state it is waiting for the client to send ConnectMessage
@@ -79,7 +65,7 @@ pub struct ClientInterface {
     /// what state the interface is in (like waiting for the client to send connection/auth stuff)
     state: InterfaceState,
     /// Handlers for messages, to be asked to handle new incoming messages
-    handlers: Vec<Box<dyn MessageHandler + Send>>,
+    handlers: Vec<Box<dyn MessageHandler<Operation = HandlerOperation> + Send>>,
     server_name: String,
     client_name: Option<String>,
     uuid: uuid::Uuid,
@@ -90,7 +76,7 @@ impl ClientInterface {
     pub fn new(
         socket: TcpStream,
         name: String,
-        handlers: Vec<Box<dyn MessageHandler + Send>>,
+        handlers: Vec<Box<dyn MessageHandler<Operation = HandlerOperation> + Send>>,
     ) -> Self {
         Self {
             to_send: queue![],
@@ -174,12 +160,12 @@ impl ClientInterface {
     }
 
     #[allow(dead_code)]
-    pub fn register_handler(&mut self, handler: Box<dyn MessageHandler + Send>) {
+    pub fn register_handler(&mut self, handler: Box<dyn MessageHandler<Operation = HandlerOperation> + Send>) {
         self.handlers.push(handler);
     }
 
     #[allow(dead_code)]
-    pub fn get_handlers(&mut self) -> &mut Vec<Box<dyn MessageHandler + Send>> {
+    pub fn get_handlers(&mut self) -> &mut Vec<Box<dyn MessageHandler<Operation = HandlerOperation> + Send>> {
         &mut self.handlers
     }
 

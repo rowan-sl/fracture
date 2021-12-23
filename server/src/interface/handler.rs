@@ -2,7 +2,7 @@ use tokio::net::TcpStream;
 use tokio::sync::broadcast::Sender;
 use tokio::task;
 
-use api::utils::wait_100ms;
+use api::utils::wait_update_time;
 use api::stat;
 
 use crate::conf::NAME;
@@ -64,7 +64,7 @@ pub async fn handle_client(
                         stati::UpdateReadStatus::Sucsess => {}
                     };
                 }
-                _ = wait_100ms() => {//update loop
+                _ = wait_update_time() => {//update loop
                     interface.update_process_all().await;
                     if let stati::MultiSendStatus::Failure(err) = interface.send_all_queued().await {
                         match err {
