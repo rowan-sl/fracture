@@ -1,5 +1,5 @@
-mod conf;
 mod client;
+mod conf;
 mod types;
 
 use tokio::io;
@@ -128,7 +128,7 @@ async fn main() {
         }
         println!("Exiting");
     });
-    join!(main_task, get_ctrlc_listener(ctrlc_transmitter));
+    let _ = join!(main_task, get_ctrlc_listener(ctrlc_transmitter));
 }
 
 fn get_ctrlc_listener(

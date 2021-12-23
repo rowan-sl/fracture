@@ -23,6 +23,7 @@ pub async fn handle_client(
             addr,
             interface.get_client_addr().unwrap()
         );
+        println!("New client id is {:?}", interface.uuid());
         loop {
             tokio::select! {
                 stat = interface.update_read() => {
@@ -45,8 +46,30 @@ pub async fn handle_client(
                             interface.close(String::from(""), false, true).await;
                             break;
                         },
-                        stati::UpdateReadStatus::Sucsess => {}
-                    }
+                        stati::UpdateReadStatus::Sucsess => {
+                            interface.update_process_all().await;
+                            match interface.send_all_queued().await {
+                                stati::MultiSendStatus::Failure (err) => {
+                                    match err {
+                                        stati::SendStatus::Failure (ioerr) => {
+                                            if ioerr.kind() == std::io::ErrorKind::NotConnected {
+                                                println!("{:?} disconnected", addr);
+                                                interface.close(String::from(""), true, false).await;// do not notify the client of disconnecting, as it is already disconnected
+                                                break;
+                                            } else {
+                                                panic!("Error while sending messages:\n{:#?}", ioerr);
+                                            }
+                                        }
+                                        stati::SendStatus::SeriError (serr) => {
+                                            panic!("Could not serialize message:\n{:#?}", serr);
+                                        }
+                                        _ => {}
+                                    };
+                                }
+                                _ => {}
+                            };
+                        }
+                    };
                 }
                 smsg = client_shutdown_channel.recv() => {
                     println!("Closing connection to {:?}", addr);

@@ -69,6 +69,7 @@ pub enum InterfaceOperation {}
 #[derive(Clone, Copy, Debug)]
 pub enum HandlerOperation {
     /// Do a program operation
+    #[allow(dead_code)]
     InterfaceOperation(InterfaceOperation),
 }
 

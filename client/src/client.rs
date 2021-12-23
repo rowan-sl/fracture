@@ -8,8 +8,8 @@ use uuid::Uuid;
 use api::msg;
 use api::seri;
 
-use crate::types::*;
 use crate::conf;
+use crate::types::*;
 
 pub struct Client {
     sock: TcpStream,
@@ -310,6 +310,7 @@ impl Client {
                                     client_uuid: real_uuid,
                                     name: server_name,
                                 });
+                                self.state = ClientState::Ready;
                                 return Success;
                             }
                             _ => {
@@ -382,6 +383,7 @@ impl Client {
                     HandlerOperation::InterfaceOperation(_inter_op) => {
                         return Ok(Some(op));
                     }
+                    #[allow(unreachable_patterns)] // this is a GOOD thing
                     _ => {
                         return Err(Some(op));
                     }

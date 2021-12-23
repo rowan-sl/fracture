@@ -56,6 +56,7 @@ pub mod stati {
 }
 
 /// Operations that a MessageHandler can request occur
+#[allow(dead_code)]
 pub enum HandlerOperation {
     /// Send a public message to all other users
     SendPublicMessage { msg: msg::Message },
@@ -310,6 +311,10 @@ impl ClientInterface {
                     MessageVarient::ConnectMessage { name } => {
                         //TODO make this actulay handle users (with the user state handler) (mabey later)
                         self.client_name = Some(name);
+                        println!(
+                            "Client named itself and completed auth: {:#?}",
+                            self.name().unwrap()
+                        );
                         self.state = InterfaceState::RecevedConnectMessage;
                     }
                     other => {
