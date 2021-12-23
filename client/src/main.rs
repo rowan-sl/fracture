@@ -18,7 +18,19 @@ use types::{stati, ShutdownMessage};
 
 #[tokio::main]
 async fn main() {
-    let stream = TcpStream::connect(conf::ADDR).await.unwrap();
+    let stream = match TcpStream::connect(conf::ADDR).await {
+        Ok(st) => st,
+        Err(err) => {
+            use std::io::ErrorKind::ConnectionRefused;
+            if let ConnectionRefused = err.kind() {
+                eprintln!("Connection Refused! The server may not be online, or there may be a problem with the network. Error folows:\n{:#?}", err);
+            } else {
+                eprintln!("Error while connecting:\n{:#?}", err);
+            }
+            eprintln!("Aborting!");
+            return;
+        }
+    };
     let (shutdown_tx, _): (Sender<ShutdownMessage>, Receiver<ShutdownMessage>) = channel(5);
     let ctrlc_transmitter = shutdown_tx.clone();
 
