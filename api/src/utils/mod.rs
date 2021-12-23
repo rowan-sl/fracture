@@ -5,5 +5,5 @@ pub mod ipencoding;
 
 #[inline]
 pub async fn wait_update_time() {//used in update loops
-    sleep(Duration::from_millis(100)).await;
+    sleep(Duration::from_millis(crate::conf::UPDATE_TIME)).await;
 }

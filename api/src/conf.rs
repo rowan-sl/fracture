@@ -1,0 +1,1 @@
+pub const UPDATE_TIME: u64 = 50; //ms to wait between updates
