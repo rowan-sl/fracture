@@ -57,9 +57,10 @@ fn get_client_listener(
                     for task in &mut tasks {
                         let res = task.await;
                         if res.is_err() {
-                            println!("Connection handler closed with error {:#?}", res);
+                            eprintln!("Connection handler closed with error {:#?}", res);
                         }
                     }
+                    println!("Closed all client interfaces");
                     break;
                 }
             };
@@ -75,7 +76,7 @@ fn get_ctrlc_listener(
     tokio::spawn(async move {
         let sig_res = tokio::signal::ctrl_c().await;
         println!("\nRecieved ctrl+c, shutting down");
-        if ctrlc_transmitter.receiver_count() == 0 {
+        if ctrlc_transmitter.receiver_count() != 0 {
             ctrlc_transmitter
                 .send(ShutdownMessage {
                     reason: String::from("Server closed"),

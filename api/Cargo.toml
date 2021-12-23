@@ -7,7 +7,7 @@ publish = false
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-tokio = { version = "1", features = ["sync", "rt-multi-thread", "io-util", "signal", "rt", "net"] }
+tokio = { version = "1", features = ["sync", "rt-multi-thread", "io-util", "signal", "rt", "net", "time"] }
 serde = { version = "1", features = ["derive"] }
 bincode = "1.3.3"
 bytes = "1"

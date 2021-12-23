@@ -408,12 +408,17 @@ impl ClientInterface {
                         break;
                     }
                 }
-                Err(err) => {
-                    if err.kind() == tokio::io::ErrorKind::WouldBlock {
+                Err(err) => match err.kind() {
+                    tokio::io::ErrorKind::WouldBlock => {
                         continue;
                     }
-                    return Err(stati::ReadMessageError::ReadError(err));
-                }
+                    tokio::io::ErrorKind::NotConnected => {
+                        return Err(stati::ReadMessageError::Disconnected);
+                    }
+                    _ => {
+                        return Err(stati::ReadMessageError::ReadError(err));
+                    }
+                },
             }
         }
         let header_r =
