@@ -2,8 +2,8 @@ use tokio::net::TcpStream;
 use tokio::sync::broadcast::*;
 use tokio::task;
 
-use crate::client_interface::{stati, ClientInterface};
 use crate::conf::NAME;
+use crate::interface::core::{stati, ClientInterface};
 
 #[derive(Clone, Debug)]
 pub struct ShutdownMessage {

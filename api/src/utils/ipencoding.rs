@@ -30,10 +30,10 @@ fn int2letter(num: u128) -> Result<char, u128> {
         _ => ' ',
     };
     if conv == ' ' {
-        return Err(num);
+        Err(num)
     } else {
-        return Ok(conv);
-    };
+        Ok(conv)
+    }
 }
 
 fn letter2int(ltr: char) -> Result<u8, char> {
@@ -67,9 +67,9 @@ fn letter2int(ltr: char) -> Result<u8, char> {
         _ => 50,
     };
     if conv == 50 {
-        return Err(ltr);
+        Err(ltr)
     } else {
-        return Ok(conv);
+        Ok(conv)
     }
 }
 
@@ -79,11 +79,11 @@ fn num_to_code(mut num: u128) -> String {
         let dig = int2letter(num % 25);
         res.push(dig.unwrap());
         num /= 25;
-        if num <= 0 {
+        if num == 0 {//cant be less since it is u n s i g n e d you dumbo
             break;
         }
     }
-    return res.chars().rev().collect::<String>();
+    res.chars().rev().collect::<String>()
 }
 
 fn code_to_num(mut code: String) -> u128 {
@@ -125,7 +125,7 @@ pub fn code_to_ip(code: String) -> std::net::SocketAddrV4 {
     let b = combined / 1000;
     combined -= b * 1000;
     let a = combined;
-    return std::net::SocketAddrV4::new(
+    std::net::SocketAddrV4::new(
         std::net::Ipv4Addr::new(
             a.try_into().unwrap(),
             b.try_into().unwrap(),
@@ -133,5 +133,5 @@ pub fn code_to_ip(code: String) -> std::net::SocketAddrV4 {
             d.try_into().unwrap(),
         ),
         p.try_into().unwrap(),
-    );
+    )
 }

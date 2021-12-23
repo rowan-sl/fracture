@@ -127,10 +127,10 @@ pub mod header {
         /// Creates a new MessageHeader based off of msg
         ///
         /// Can panic, if it cannot convert msg.len() to u64
-        pub fn new(msg: &Vec<u8>) -> MessageHeader {
-            return MessageHeader {
+        pub fn new(msg: &[u8]) -> MessageHeader {
+            MessageHeader {
                 msg_size: u64::try_from(msg.len()).unwrap(),
-            };
+            }
         }
 
         /// Creates a header of size 0
@@ -141,7 +141,7 @@ pub mod header {
         /// Get the size of the message
         /// Can panic, if it cannot convert the msg_size to usize
         pub fn size(&self) -> usize {
-            return usize::try_from(self.msg_size).unwrap();
+            usize::try_from(self.msg_size).unwrap()
         }
 
         /// Converts the message header to bytes, and then drops it
@@ -150,14 +150,13 @@ pub mod header {
             result.put(&b"ds-header"[..]);
             result.put_u64(self.msg_size);
             result.put(&b"header-end"[..]);
-            drop(self);
             result.freeze()
         }
 
         /// Takes bytes::Bytes and creates a header
         pub fn from_bytes(header: bytes::Bytes) -> Result<MessageHeader, HeaderParserError> {
             if header.len() != HEADER_LEN {
-                return Err(HeaderParserError::InvalidLength);
+                Err(HeaderParserError::InvalidLength)
             } else {
                 let header_start = header.slice(..b"ds-header".len());
                 let mut message_size = header.slice(b"ds-header".len()..b"ds-header".len() + 8);

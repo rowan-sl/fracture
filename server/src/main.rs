@@ -1,23 +1,19 @@
-mod client_handler;
-mod client_interface;
-// mod client_tracker;
 mod conf;
+mod interface;
 
-use tokio::{
-    io,
-    net::TcpListener,
-    sync::broadcast::{channel, Receiver, Sender},
-    task,
-};
+use tokio::{io, net::TcpListener, sync::broadcast, task};
 
 use api::utils::ipencoding;
 
-use client_handler::{handle_client, ShutdownMessage};
 use conf::ADDR;
+use interface::{handler::handle_client, handler::ShutdownMessage};
 
 #[tokio::main]
 async fn main() -> io::Result<()> {
-    let (shutdown_tx, _): (Sender<ShutdownMessage>, Receiver<ShutdownMessage>) = channel(5);
+    let (shutdown_tx, _): (
+        broadcast::Sender<ShutdownMessage>,
+        broadcast::Receiver<ShutdownMessage>,
+    ) = broadcast::channel(5);
 
     let ctrlc_transmitter = shutdown_tx.clone();
 
@@ -29,7 +25,9 @@ async fn main() -> io::Result<()> {
     Ok(())
 }
 
-fn get_client_listener(shutdown_tx: Sender<ShutdownMessage>) -> task::JoinHandle<io::Result<()>> {
+fn get_client_listener(
+    shutdown_tx: broadcast::Sender<ShutdownMessage>,
+) -> task::JoinHandle<io::Result<()>> {
     tokio::spawn(async move {
         let mut accepter_shutdown_rx = shutdown_tx.subscribe();
         // TODO make address configurable
@@ -57,24 +55,21 @@ fn get_client_listener(shutdown_tx: Sender<ShutdownMessage>) -> task::JoinHandle
                 }
                 _ = accepter_shutdown_rx.recv() => {
                     for task in tasks.iter_mut() {
-                        let stat = task.await;
-                        match stat {
-                            Ok(_) => {},
-                            Err(err) => {
-                                println!("Connection handler closed with error {:#?}", err);
-                            }
-                        };
+                        let res = task.await;
+                        if res.is_err() {
+                            println!("Connection handler closed with error {:#?}", res);
+                        }
                     }
                     break;
                 }
             };
         }
-        Ok(())
+        return Ok(());
     })
 }
 
 fn get_ctrlc_listener(
-    ctrlc_transmitter: Sender<ShutdownMessage>,
+    ctrlc_transmitter: broadcast::Sender<ShutdownMessage>,
 ) -> task::JoinHandle<io::Result<()>> {
     tokio::spawn(async move {
         let sig_res = tokio::signal::ctrl_c().await;

@@ -37,11 +37,10 @@ pub mod seri {
     }
 
     impl SerializedMessage {
-        /// Returns self as bytes, a combination of bolth the Header, and then the Message, droping the SerializedMessage it was called on
+        /// Returns self as bytes, a combination of bolth the Header, and then the Message
         pub fn into_bytes(&mut self) -> Vec<u8> {
             let mut result = bytes2vec(self.header.to_bytes());
             result.append(&mut self.message_bytes);
-            drop(self);
             result
         }
 
@@ -60,7 +59,7 @@ pub mod seri {
                 let header = MessageHeader::new(&dat);
                 Ok(SerializedMessage {
                     message_bytes: dat,
-                    header: header,
+                    header,
                 })
             }
             Err(err) => Err(res::SerializationError::BincodeErr(err)),
@@ -75,7 +74,7 @@ pub mod seri {
     /// including the part where it will panic, so if that is not desierable, DO IT DIFFERENTLY
     /// this is mostly meant as a quick way to test new things, and not intended for final use
     pub async fn fullsend(msg: &Message, socket: &mut TcpStream) {
-        let encoded = self::serialize(&msg).unwrap().into_bytes();
+        let encoded = self::serialize(msg).unwrap().into_bytes();
         socket.write_all(&encoded).await.unwrap();
     }
 
@@ -113,7 +112,6 @@ pub mod seri {
                 }
             }
         }
-        drop(read);
         let header_r = MessageHeader::from_bytes(vec2bytes(Vec::from(header_buffer)));
         match header_r {
             Ok(header) => {
@@ -138,7 +136,7 @@ pub mod seri {
                                 match deserialized {
                                     Ok(msg) => {
                                         return Ok(res::GetMessageResponse {
-                                            msg: msg,
+                                            msg,
                                             bytes: buffer.len(),
                                         })
                                     }
@@ -160,7 +158,7 @@ pub mod seri {
                 }
             }
             Err(err) => {
-                return Err(res::GetMessageError::HeaderParser(err));
+                Err(res::GetMessageError::HeaderParser(err))
             }
         }
     }
@@ -172,6 +170,6 @@ pub mod seri {
 
     /// Create `Vec<u8>` from `bytes::Bytes`
     pub fn bytes2vec(data: Bytes) -> Vec<u8> {
-        return Vec::from(&data[..]);
+        Vec::from(&data[..])
     }
 }

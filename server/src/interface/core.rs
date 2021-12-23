@@ -59,11 +59,11 @@ pub mod stati {
 #[allow(dead_code)]
 pub enum HandlerOperation {
     /// Send a public message to all other users
-    SendPublicMessage { msg: msg::Message },
+    PublicMessage { msg: msg::Message },
     /// Send a message back to the client
-    SendSelfMessage { msg: msg::Message },
+    SelfMessage { msg: msg::Message },
     /// Send a chat message to all other clients
-    SendChatMessage { message_content: String },
+    ChatMessage { message_content: String },
 }
 
 /// Generic trait for createing a message handler.
@@ -107,7 +107,7 @@ pub struct ClientInterface {
 
 impl ClientInterface {
     pub fn new(
-        sock: TcpStream,
+        socket: TcpStream,
         name: String,
         handlers: Vec<Box<dyn MessageHandler + Send>>,
     ) -> ClientInterface {
@@ -115,8 +115,8 @@ impl ClientInterface {
             to_send: queue![],
             incoming: queue![],
             state: InterfaceState::Start,
-            handlers: handlers,
-            socket: sock,
+            handlers,
+            socket,
             server_name: name,
             client_name: None,
             uuid: uuid::Uuid::new_v4(),
@@ -126,13 +126,13 @@ impl ClientInterface {
     /// Get the name of the connected client (it names itself).
     /// Will return None if the client has not sent connection data yet
     pub fn name(&self) -> Option<String> {
-        return self.client_name.clone();
+        self.client_name.clone()
     }
 
     /// Get the uuid of the client.
     /// this is not specified by the client, but generated randomly on initialization.
     pub fn uuid(&self) -> uuid::Uuid {
-        return self.uuid.clone();
+        self.uuid
     }
 
     /// Close the socket, optionaly notifying the client why it is being disconnected
@@ -189,8 +189,6 @@ impl ClientInterface {
                 }
             }
         };
-        //& bye bye me
-        drop(self);
     }
 
     #[allow(dead_code)]
@@ -200,7 +198,7 @@ impl ClientInterface {
 
     #[allow(dead_code)]
     pub fn get_handlers(&mut self) -> &mut Vec<Box<dyn MessageHandler + Send>> {
-        return &mut self.handlers;
+        &mut self.handlers
     }
 
     /// Get the address of the client connected
@@ -455,7 +453,7 @@ impl ClientInterface {
                                 match deserialized {
                                     Ok(msg) => {
                                         return Ok(stati::ReadMessageStatus {
-                                            msg: msg,
+                                            msg,
                                             bytes: buffer.len(),
                                         })
                                     }

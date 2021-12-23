@@ -25,11 +25,11 @@ pub struct Client {
 impl Client {
     pub fn new(sock: TcpStream, handlers: Vec<Box<dyn MessageHandler + Send>>) -> Client {
         Client {
-            sock: sock,
+            sock,
             incoming: queue![],
             outgoing: queue![],
             pending_op: queue![],
-            handlers: handlers,
+            handlers,
             server_info: None,
             state: ClientState::Begin,
         }
@@ -77,7 +77,6 @@ impl Client {
                 };
             }
         };
-        drop(self);
     }
 
     async fn send_message(&mut self, message: api::msg::Message) -> stati::SendStatus {
@@ -179,7 +178,6 @@ impl Client {
                 }
             }
         }
-        drop(read);
         let header_r =
             api::header::MessageHeader::from_bytes(seri::vec2bytes(Vec::from(header_buffer)));
         match header_r {
@@ -205,7 +203,7 @@ impl Client {
                                 match deserialized {
                                     Ok(msg) => {
                                         return Ok(stati::ReadMessageStatus {
-                                            msg: msg,
+                                            msg,
                                             bytes: buffer.len(),
                                         })
                                     }
@@ -227,7 +225,7 @@ impl Client {
                 }
             }
             Err(err) => {
-                return Err(stati::ReadMessageError::HeaderParser(err));
+                Err(stati::ReadMessageError::HeaderParser(err))
             }
         }
     }
@@ -250,28 +248,28 @@ impl Client {
                         reason,
                         close_message,
                     } => {
-                        return stati::UpdateReadStatus::ServerClosed {
-                            reason: reason,
-                            close_message: close_message,
-                        };
+                        stati::UpdateReadStatus::ServerClosed {
+                            reason,
+                            close_message,
+                        }
                     }
                     _ => {
                         self.incoming.add(stat.msg).unwrap();
-                        return stati::UpdateReadStatus::Success;
+                        stati::UpdateReadStatus::Success
                     }
-                };
+                }
             }
             Err(err) => {
                 match err {
                     stati::ReadMessageError::Disconnected => {
-                        return stati::UpdateReadStatus::ServerDisconnect;
+                        stati::UpdateReadStatus::ServerDisconnect
                     }
                     oerr => {
-                        return stati::UpdateReadStatus::ReadError(oerr);
+                        stati::UpdateReadStatus::ReadError(oerr)
                     }
-                };
+                }
             }
-        };
+        }
     }
 
     /// Processes incoming messages, and then queues messages for sending
