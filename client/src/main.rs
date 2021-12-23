@@ -10,8 +10,8 @@ use tokio::task;
 
 use api::msg;
 
-use client::*;
-use types::*;
+use client::Client;
+use types::{ShutdownMessage, stati};
 
 #[tokio::main]
 async fn main() {
@@ -87,34 +87,28 @@ async fn main() {
                                         }
                                     }
                                     Ok(pos_msg) => {
-                                        match pos_msg {
-                                            Some(_msg) => {
-                                                //TODO add handling things here
-                                            }
-                                            None => {}
-                                        };
+                                        if let Some(_msg) = pos_msg {
+                                            //TODO add handling things here
+                                        }
                                     }
                                 };
                             }
-                            match client.send_all_queued().await {
-                                stati::MultiSendStatus::Failure (ms_err) => {
-                                    match ms_err {
-                                        stati::SendStatus::Failure (err) => {
-                                            if err.kind() == std::io::ErrorKind::NotConnected {
-                                                println!("Disconnected!");
-                                            } else {
-                                                eprintln!("Error while sending message:\n{:#?}", err);
-                                            }
-                                            client.close(stati::CloseType::ServerDisconnected).await;
-                                            break;
+                            if let stati::MultiSendStatus::Failure (ms_err) = client.send_all_queued().await {//we only care about failure here
+                                match ms_err {
+                                    stati::SendStatus::Failure (err) => {
+                                        if err.kind() == std::io::ErrorKind::NotConnected {
+                                            println!("Disconnected!");
+                                        } else {
+                                            eprintln!("Error while sending message:\n{:#?}", err);
                                         }
-                                        stati::SendStatus::SeriError (err) => {
-                                            panic!("Could not serialize msessage:\n{:#?}", err);
-                                        }
-                                        _ => {panic!()}//this should not happen
+                                        client.close(stati::CloseType::ServerDisconnected).await;
+                                        break;
                                     }
+                                    stati::SendStatus::SeriError (err) => {
+                                        panic!("Could not serialize msessage:\n{:#?}", err);
+                                    }
+                                    _ => {panic!()}//this should not happen
                                 }
-                                _ => {}//just nothing to do or worked, we dont care
                             }
                         }
                     };
@@ -128,7 +122,7 @@ async fn main() {
         }
         println!("Exiting");
     });
-    let _ = join!(main_task, get_ctrlc_listener(ctrlc_transmitter));
+    let _task_results = join!(main_task, get_ctrlc_listener(ctrlc_transmitter));
 }
 
 fn get_ctrlc_listener(

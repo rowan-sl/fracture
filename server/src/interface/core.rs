@@ -2,7 +2,7 @@
 //TODO implement and test a message handler
 //TODO implement handler operations
 
-use api::header::HEADER_LEN;
+use api::msg::HEADER_LEN;
 use api::msg;
 use queues::queue;
 use queues::IsQueue;
@@ -42,7 +42,7 @@ pub mod stati {
     pub enum ReadMessageError {
         Disconnected,
         ReadError(std::io::Error),
-        HeaderParser(api::header::HeaderParserError),
+        HeaderParser(api::msg::HeaderParserError),
         DeserializationError(Box<bincode::ErrorKind>),
     }
 
@@ -55,19 +55,19 @@ pub mod stati {
     }
 }
 
-/// Operations that a MessageHandler can request occur
+/// Operations that a `MessageHandler` can request
 #[allow(dead_code)]
 pub enum HandlerOperation {
     /// Send a public message to all other users
-    PublicMessage { msg: msg::Message },
+    Public { msg: msg::Message },
     /// Send a message back to the client
-    SelfMessage { msg: msg::Message },
+    Client { msg: msg::Message },
     /// Send a chat message to all other clients
-    ChatMessage { message_content: String },
+    Chat { message_content: String },
 }
 
 /// Generic trait for createing a message handler.
-/// All handlers must be Send
+/// All handlers must be `Send`
 pub trait MessageHandler {
     fn new() -> Self
     where
@@ -110,8 +110,8 @@ impl ClientInterface {
         socket: TcpStream,
         name: String,
         handlers: Vec<Box<dyn MessageHandler + Send>>,
-    ) -> ClientInterface {
-        ClientInterface {
+    ) -> Self {
+        Self {
             to_send: queue![],
             incoming: queue![],
             state: InterfaceState::Start,
@@ -131,7 +131,7 @@ impl ClientInterface {
 
     /// Get the uuid of the client.
     /// this is not specified by the client, but generated randomly on initialization.
-    pub fn uuid(&self) -> uuid::Uuid {
+    pub const fn uuid(&self) -> uuid::Uuid {
         self.uuid
     }
 
@@ -146,9 +146,10 @@ impl ClientInterface {
         //TODO make it send a shutdown message and clear queue and stuff
         if !expect_alredy_shutdown {
             // only send queued messages if it isnt alredy shutdown (or at least know it is)
-            let dconn_reason = match client_requested {
-                true => api::msg::types::ServerDisconnectReason::ClientRequestedDisconnect,
-                false => api::msg::types::ServerDisconnectReason::Closed,
+            let dconn_reason = if client_requested {
+                api::msg::types::ServerDisconnectReason::ClientRequestedDisconnect
+            } else {
+                api::msg::types::ServerDisconnectReason::Closed
             };
             match self
                 .send_message(api::msg::Message {
@@ -255,13 +256,13 @@ impl ClientInterface {
             let res = self.send_queued_message().await;
             match res {
                 stati::SendStatus::NoTask => {
-                    if sent == 0 {
-                        return stati::MultiSendStatus::NoTask;
+                    return if sent == 0 {
+                        stati::MultiSendStatus::NoTask
                     } else {
-                        return stati::MultiSendStatus::Worked {
+                        stati::MultiSendStatus::Worked {
                             amnt: sent,
                             bytes: sent_bytes,
-                        };
+                        }
                     }
                 }
                 stati::SendStatus::Sent(stat) => {
@@ -291,17 +292,14 @@ impl ClientInterface {
     /// returns if the message was handled or not
     async fn process(&mut self, msg: api::msg::Message) -> bool {
         // The ping message should always be a valid thing to send/rcv
-        use api::msg::*;
-        match msg.data {
-            MessageVarient::Ping => {
-                self.queue_message(Message {
-                    data: MessageVarient::Pong,
-                })
-                .unwrap();
-                return true;
-            }
-            _ => {}
-        };
+        use api::msg::{types, Message, MessageVarient};
+        if let MessageVarient::Ping = msg.data {
+            self.queue_message(Message {
+                data: MessageVarient::Pong,
+            })
+            .unwrap();
+            return true;
+        }
         // handle everything else
         match self.state {
             InterfaceState::Start => {
@@ -349,7 +347,7 @@ impl ClientInterface {
             InterfaceState::Ready => {
                 // normal stuff handling
                 let mut handeld = false;
-                for h in self.handlers.iter_mut() {
+                for h in &mut self.handlers {
                     let result = h.handle(&msg);
                     if result {
                         handeld = true;
@@ -361,7 +359,7 @@ impl ClientInterface {
                 }
             }
         };
-        return true;
+        true
     }
 
     /// Handles the reading message half of updating the client.
@@ -373,31 +371,22 @@ impl ClientInterface {
         let read = self.read_msg().await;
         match read {
             Ok(stat) => {
-                match stat.msg.data {
-                    msg::MessageVarient::DisconnectMessage {} => {
-                        return stati::UpdateReadStatus::GracefullDisconnect;
+                if let msg::MessageVarient::DisconnectMessage {} = stat.msg.data {
+                    stati::UpdateReadStatus::GracefullDisconnect
+                } else {
+                    let added = self.incoming.add(stat.msg);
+                    if added.is_err() {
+                        panic!("Could not queue message for sending!");
+                    } else {
+                        stati::UpdateReadStatus::Sucsess
                     }
-                    _ => {
-                        let added = self.incoming.add(stat.msg);
-                        if added.is_err() {
-                            panic!("Could not queue message for sending!");
-                        } else {
-                            return stati::UpdateReadStatus::Sucsess;
-                        }
-                    }
-                };
+                }
             }
-            Err(err) => {
-                match err {
-                    stati::ReadMessageError::Disconnected => {
-                        return stati::UpdateReadStatus::Disconnected;
-                    }
-                    oerr => {
-                        return stati::UpdateReadStatus::ReadError(oerr);
-                    }
-                };
-            }
-        };
+            Err(err_or_disconnect) => match err_or_disconnect {
+                stati::ReadMessageError::Disconnected => stati::UpdateReadStatus::Disconnected,
+                err => stati::UpdateReadStatus::ReadError(err),
+            },
+        }
     }
 
     /// read one message from the socket
@@ -427,9 +416,8 @@ impl ClientInterface {
                 }
             }
         }
-        drop(read);
         let header_r =
-            api::header::MessageHeader::from_bytes(api::seri::vec2bytes(Vec::from(header_buffer)));
+            api::msg::Header::from_bytes(&api::seri::vec2bytes(Vec::from(header_buffer)));
         match header_r {
             Ok(header) => {
                 let read_amnt = header.size();
@@ -474,23 +462,14 @@ impl ClientInterface {
                     }
                 }
             }
-            Err(err) => {
-                return Err(stati::ReadMessageError::HeaderParser(err));
-            }
+            Err(err) => Err(stati::ReadMessageError::HeaderParser(err)),
         }
     }
 
     /// Process all messages
     pub async fn update_process_all(&mut self) {
-        loop {
-            match self.incoming.remove() {
-                Ok(msg) => {
-                    self.process(msg).await;
-                }
-                Err(_) => {
-                    break;
-                }
-            }
+        while let Ok(msg) = self.incoming.remove() {
+            self.process(msg).await;
         }
     }
 }

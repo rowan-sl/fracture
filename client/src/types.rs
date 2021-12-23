@@ -21,7 +21,7 @@ pub mod stati {
     pub enum ReadMessageError {
         Disconnected,
         ReadError(std::io::Error),
-        HeaderParser(api::header::HeaderParserError),
+        HeaderParser(api::msg::HeaderParserError),
         DeserializationError(Box<bincode::ErrorKind>),
     }
 
@@ -65,7 +65,7 @@ pub mod stati {
 pub enum InterfaceOperation {}
 
 //TODO add more of these
-/// Operations that a MessageHandler can request occur
+/// Operations that a `MessageHandler` can request occur
 #[derive(Clone, Copy, Debug)]
 pub enum HandlerOperation {
     /// Do a program operation

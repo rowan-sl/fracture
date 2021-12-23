@@ -1,5 +1,5 @@
 /// Converts a number from 0-25 to a alphabet letter
-fn int2letter(num: u128) -> Result<char, u128> {
+const fn int2letter(num: u128) -> Result<char, u128> {
     let conv = match num {
         0 => 'A',
         1 => 'B',
@@ -36,7 +36,7 @@ fn int2letter(num: u128) -> Result<char, u128> {
     }
 }
 
-fn letter2int(ltr: char) -> Result<u8, char> {
+const fn letter2int(ltr: char) -> Result<u8, char> {
     let conv = match ltr {
         'A' => 0,
         'B' => 1,
@@ -73,65 +73,82 @@ fn letter2int(ltr: char) -> Result<u8, char> {
     }
 }
 
-fn num_to_code(mut num: u128) -> String {
+#[must_use] fn num_to_code(mut num: u128) -> String {
     let mut res = String::new();
     loop {
         let dig = int2letter(num % 25);
         res.push(dig.unwrap());
         num /= 25;
-        if num == 0 {//cant be less since it is u n s i g n e d you dumbo
+        if num == 0 {
+            //cant be less since it is u n s i g n e d you dumbo
             break;
         }
     }
     res.chars().rev().collect::<String>()
 }
 
-fn code_to_num(mut code: String) -> u128 {
+#[must_use] fn code_to_num(mut code: String) -> u128 {
     let mut res: u128 = 0;
     code.make_ascii_uppercase();
     for ch in code.chars() {
         let v = letter2int(ch).unwrap();
         res *= 25;
-        res += v as u128;
+        res += u128::from(v);
     }
     res
 }
 
-pub fn ip_to_code(ip: std::net::SocketAddrV4) -> String {
+#[must_use] pub fn ip_to_code(ip: std::net::SocketAddrV4) -> String {
     let addr = ip.ip();
     let pts = addr.octets();
-    let a = pts[0];
-    let b = pts[1];
-    let c = pts[2];
-    let d = pts[3];
-    let p = ip.port();
+
+    let addr_pt1 = pts[0];
+    let addr_pt2 = pts[1];
+    let addr_pt3 = pts[2];
+    let addr_pt4 = pts[3];
+
+    let port = ip.port();
+
     let mut combined: u128 = 0;
-    combined += a as u128;
-    combined += b as u128 * 1000;
-    combined += c as u128 * 1000000;
-    combined += d as u128 * 1000000000;
-    combined += p as u128 * 1000000000000;
+    combined += u128::from(addr_pt1);
+    combined += u128::from(addr_pt2) * 1_000;
+    combined += u128::from(addr_pt3) * 1_000_000;
+    combined += u128::from(addr_pt4) * 1_000_000_000;
+    combined += u128::from(port)     * 1_000_000_000_000;
     num_to_code(combined)
 }
 
-pub fn code_to_ip(code: String) -> std::net::SocketAddrV4 {
+/// Converts a letter code into a socket addr
+///
+/// # Returns
+/// `SocketAddrV4`
+///
+/// # Panics
+/// if the number decoded from the codes cannot be converted into `u8` or `u16` for the address and port respectively
+#[must_use] pub fn code_to_ip(code: String) -> std::net::SocketAddrV4 {
     let mut combined = code_to_num(code);
-    let p = combined / 1000000000000;
-    combined -= p * 1000000000000;
-    let d = combined / 1000000000;
-    combined -= d * 1000000000;
-    let c = combined / 1000000;
-    combined -= c * 1000000;
-    let b = combined / 1000;
-    combined -= b * 1000;
-    let a = combined;
+
+    let addr_pt1 = combined / 1_000_000_000_000;
+    combined -= addr_pt1 *    1_000_000_000_000;
+
+    let addr_pt2 = combined / 1_000_000_000;
+    combined -= addr_pt2 *    1_000_000_000;
+
+    let addr_pt3 = combined / 1_000_000;
+    combined -= addr_pt3 *    1_000_000;
+
+    let addr_pt4 = combined / 1_000;
+    combined -= addr_pt4 *    1_000;
+
+    let port = combined;
+
     std::net::SocketAddrV4::new(
         std::net::Ipv4Addr::new(
-            a.try_into().unwrap(),
-            b.try_into().unwrap(),
-            c.try_into().unwrap(),
-            d.try_into().unwrap(),
+            addr_pt1.try_into().unwrap(),
+            addr_pt2.try_into().unwrap(),
+            addr_pt3.try_into().unwrap(),
+            addr_pt4.try_into().unwrap(),
         ),
-        p.try_into().unwrap(),
+        port.try_into().unwrap(),
     )
 }

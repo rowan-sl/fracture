@@ -1,5 +1,5 @@
 use tokio::net::TcpStream;
-use tokio::sync::broadcast::*;
+use tokio::sync::broadcast::Sender;
 use tokio::task;
 
 use crate::conf::NAME;
@@ -33,11 +33,11 @@ pub async fn handle_client(
                             interface.close(String::from(""), true, false).await;// do not notify the client of disconnecting, as it is already disconnected
                             break;
                         },
-                        stati::UpdateReadStatus::ReadError ( err ) => {
-                            match err {
+                        stati::UpdateReadStatus::ReadError ( err_or_disconnect ) => {
+                            match err_or_disconnect {
                                 stati::ReadMessageError::Disconnected => {}, // already handeled, should never occur
-                                oerr => {
-                                    panic!("Failed to read message! {:#?}", oerr);
+                                err => {
+                                    panic!("Failed to read message! {:#?}", err);
                                 }
                             }
                         },
@@ -48,26 +48,23 @@ pub async fn handle_client(
                         },
                         stati::UpdateReadStatus::Sucsess => {
                             interface.update_process_all().await;
-                            match interface.send_all_queued().await {
-                                stati::MultiSendStatus::Failure (err) => {
-                                    match err {
-                                        stati::SendStatus::Failure (ioerr) => {
-                                            if ioerr.kind() == std::io::ErrorKind::NotConnected {
-                                                println!("{:?} disconnected", addr);
-                                                interface.close(String::from(""), true, false).await;// do not notify the client of disconnecting, as it is already disconnected
-                                                break;
-                                            } else {
-                                                panic!("Error while sending messages:\n{:#?}", ioerr);
-                                            }
+                            if let stati::MultiSendStatus::Failure(err) = interface.send_all_queued().await {
+                                match err {
+                                    stati::SendStatus::Failure (ioerr) => {
+                                        if ioerr.kind() == std::io::ErrorKind::NotConnected {
+                                            println!("{:?} disconnected", addr);
+                                            interface.close(String::from(""), true, false).await;// do not notify the client of disconnecting, as it is already disconnected
+                                        } else {
+                                            panic!("Error while sending messages:\n{:#?}", ioerr);
                                         }
-                                        stati::SendStatus::SeriError (serr) => {
-                                            panic!("Could not serialize message:\n{:#?}", serr);
-                                        }
-                                        _ => {}
-                                    };
+                                        break;
+                                    }
+                                    stati::SendStatus::SeriError (serr) => {
+                                        panic!("Could not serialize message:\n{:#?}", serr);
+                                    }
+                                    _ => {}
                                 }
-                                _ => {}
-                            };
+                            }
                         }
                     };
                 }

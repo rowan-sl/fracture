@@ -9,7 +9,7 @@ use api::msg;
 use api::seri;
 
 use crate::conf;
-use crate::types::*;
+use crate::types::{ClientState, HandlerOperation, MessageHandler, ServerInfo, stati};
 
 pub struct Client {
     sock: TcpStream,
@@ -23,8 +23,8 @@ pub struct Client {
 }
 
 impl Client {
-    pub fn new(sock: TcpStream, handlers: Vec<Box<dyn MessageHandler + Send>>) -> Client {
-        Client {
+    pub fn new(sock: TcpStream, handlers: Vec<Box<dyn MessageHandler + Send>>) -> Self {
+        Self {
             sock,
             incoming: queue![],
             outgoing: queue![],
@@ -128,13 +128,13 @@ impl Client {
             let res = self.send_queued_message().await;
             match res {
                 stati::SendStatus::NoTask => {
-                    if sent == 0 {
-                        return stati::MultiSendStatus::NoTask;
+                    return if sent == 0 {
+                        stati::MultiSendStatus::NoTask
                     } else {
-                        return stati::MultiSendStatus::Worked {
+                        stati::MultiSendStatus::Worked {
                             amnt: sent,
                             bytes: sent_bytes,
-                        };
+                        }
                     }
                 }
                 stati::SendStatus::Sent(stat) => {
@@ -156,7 +156,7 @@ impl Client {
         //TODO god fix this sin
         drop(self.sock.readable().await); //heck u and ill see u never
 
-        let mut header_buffer = [0; api::header::HEADER_LEN];
+        let mut header_buffer = [0; api::msg::HEADER_LEN];
         let mut read = 0;
         loop {
             drop(self.sock.readable().await);
@@ -166,7 +166,7 @@ impl Client {
                 }
                 Ok(n) => {
                     read += n;
-                    if read >= api::header::HEADER_LEN {
+                    if read >= api::msg::HEADER_LEN {
                         break;
                     }
                 }
@@ -179,7 +179,7 @@ impl Client {
             }
         }
         let header_r =
-            api::header::MessageHeader::from_bytes(seri::vec2bytes(Vec::from(header_buffer)));
+            api::msg::Header::from_bytes(&seri::vec2bytes(Vec::from(header_buffer)));
         match header_r {
             Ok(header) => {
                 let read_amnt = header.size();
@@ -224,9 +224,7 @@ impl Client {
                     }
                 }
             }
-            Err(err) => {
-                Err(stati::ReadMessageError::HeaderParser(err))
-            }
+            Err(err) => Err(stati::ReadMessageError::HeaderParser(err)),
         }
     }
 
@@ -241,47 +239,39 @@ impl Client {
     /// This IS cancelation safe
     pub async fn update_read(&mut self) -> stati::UpdateReadStatus {
         let read = self.read_msg().await;
-        match read {
-            Ok(stat) => {
-                match stat.msg.data {
-                    msg::MessageVarient::ServerForceDisconnect {
-                        reason,
-                        close_message,
-                    } => {
-                        stati::UpdateReadStatus::ServerClosed {
-                            reason,
-                            close_message,
-                        }
-                    }
-                    _ => {
-                        self.incoming.add(stat.msg).unwrap();
-                        stati::UpdateReadStatus::Success
-                    }
+        if let Ok(stat) = read {
+            if let msg::MessageVarient::ServerForceDisconnect {
+                reason,
+                close_message,
+            } = stat.msg.data {
+                stati::UpdateReadStatus::ServerClosed {
+                    reason,
+                    close_message,
                 }
+            } else {
+                self.incoming.add(stat.msg).unwrap();
+                stati::UpdateReadStatus::Success
             }
-            Err(err) => {
-                match err {
-                    stati::ReadMessageError::Disconnected => {
-                        stati::UpdateReadStatus::ServerDisconnect
-                    }
-                    oerr => {
-                        stati::UpdateReadStatus::ReadError(oerr)
-                    }
-                }
+        } else if let Err(err) = read {
+            match err {
+                stati::ReadMessageError::Disconnected => stati::UpdateReadStatus::ServerDisconnect,
+                oerr => stati::UpdateReadStatus::ReadError(oerr),
             }
+        } else {
+            panic!("this should never happen, but it apeases the compiler")
         }
     }
 
     /// Processes incoming messages, and then queues messages for sending
     pub async fn update(&mut self) -> stati::UpdateStatus {
-        use stati::UpdateStatus::*;
-        use ClientState::*;
+        use stati::UpdateStatus::{Noop, Success, Unexpected, Unhandled};
+        use ClientState::{Begin, Hanshake, Ready};
         match &self.state {
             Begin => {
                 // send message to server about the client
                 self.queue_msg(api::common::gen_connect(String::from(conf::NAME)));
                 self.state = Hanshake;
-                return Success;
+                Success
             }
             Hanshake => {
                 // receive server data
@@ -295,13 +285,12 @@ impl Client {
                                 connected_users: _, //TODO stop ignoring the servers lies, prehaps when it stops lying
                                 your_uuid,
                             } => {
-                                match conn_status {
-                                    msg::types::ConnectionStatus::Refused { reason } => {
-                                        println!("Connection refused:{}", reason);
-                                        return stati::UpdateStatus::ConnectionRefused;
-                                    }
-                                    _ => {}
-                                };
+                                if let msg::types::ConnectionStatus::Refused { reason } =
+                                    conn_status
+                                {
+                                    println!("Connection refused:{}", reason);
+                                    return stati::UpdateStatus::ConnectionRefused;
+                                }
                                 println!("Connected to: {}", server_name);
                                 let real_uuid = Uuid::from_u128(your_uuid);
                                 self.server_info = Some(ServerInfo {
@@ -309,17 +298,13 @@ impl Client {
                                     name: server_name,
                                 });
                                 self.state = ClientState::Ready;
-                                return Success;
+                                Success
                             }
-                            _ => {
-                                return Unexpected(msg);
-                            }
-                        };
+                            _ => Unexpected(msg),
+                        }
                     }
-                    Err(_) => {
-                        return Noop;
-                    }
-                };
+                    Err(_) => Noop,
+                }
             }
             Ready => {
                 let msg = match self.incoming.remove() {
@@ -329,7 +314,7 @@ impl Client {
                     }
                 };
                 let mut handeld = false;
-                for h in self.handlers.iter_mut() {
+                for h in &mut self.handlers {
                     let result = h.handle(&msg);
                     if result {
                         handeld = true;
@@ -337,26 +322,22 @@ impl Client {
                     }
                 }
                 if handeld {
-                    return Success;
+                    Success
                 } else {
-                    return Unhandled(msg);
+                    Unhandled(msg)
                 }
             }
-        };
+        }
     }
 
     /// Collects pending actions from handlers and stores them internaly
     pub fn collect_actions(&mut self) {
-        for h in self.handlers.iter_mut() {
-            let new_op = h.get_operations();
-            match new_op {
-                Some(ops) => {
-                    for op in ops {
-                        self.pending_op.add(op).unwrap();
-                    }
+        for h in &mut self.handlers {
+            if let Some(ops) = h.get_operations() {
+                for op in ops {
+                    self.pending_op.add(op).unwrap();
                 }
-                None => {}
-            };
+            }
         }
     }
 
@@ -378,18 +359,12 @@ impl Client {
         match op {
             Ok(op) => {
                 match op {
-                    HandlerOperation::InterfaceOperation(_inter_op) => {
-                        return Ok(Some(op));
-                    }
+                    HandlerOperation::InterfaceOperation(_inter_op) => Ok(Some(op)),
                     #[allow(unreachable_patterns)] // this is a GOOD thing
-                    _ => {
-                        return Err(Some(op));
-                    }
-                };
+                    _ => Err(Some(op)),
+                }
             }
-            Err(_) => {
-                return Err(None);
-            }
-        };
+            Err(_) => Err(None),
+        }
     }
 }

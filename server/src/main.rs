@@ -54,7 +54,7 @@ fn get_client_listener(
                     };
                 }
                 _ = accepter_shutdown_rx.recv() => {
-                    for task in tasks.iter_mut() {
+                    for task in &mut tasks {
                         let res = task.await;
                         if res.is_err() {
                             println!("Connection handler closed with error {:#?}", res);
@@ -64,7 +64,8 @@ fn get_client_listener(
                 }
             };
         }
-        return Ok(());
+
+        Ok(())
     })
 }
 
@@ -75,13 +76,12 @@ fn get_ctrlc_listener(
         let sig_res = tokio::signal::ctrl_c().await;
         println!("\nRecieved ctrl+c, shutting down");
         if ctrlc_transmitter.receiver_count() == 0 {
-            return sig_res;
+            ctrlc_transmitter
+                .send(ShutdownMessage {
+                    reason: String::from("Server closed"),
+                })
+                .unwrap();
         }
-        ctrlc_transmitter
-            .send(ShutdownMessage {
-                reason: String::from("Server closed"),
-            })
-            .unwrap();
         sig_res
     })
 }

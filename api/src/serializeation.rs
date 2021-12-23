@@ -1,7 +1,8 @@
 /// This module provides utils for serialization and deserialization of Messages.
 pub mod seri {
-    use crate::messages::header::*;
-    use crate::messages::msg::*;
+    use crate::msg::{HEADER_LEN, HeaderParserError, Header};
+    use crate::msg::Message;
+    use crate::msg;
     use bytes::Bytes;
     use tokio::io::AsyncWriteExt;
     use tokio::net::TcpStream;
@@ -33,30 +34,34 @@ pub mod seri {
 
     pub struct SerializedMessage {
         message_bytes: Vec<u8>,
-        header: MessageHeader,
+        header: Header,
     }
 
     impl SerializedMessage {
         /// Returns self as bytes, a combination of bolth the Header, and then the Message
         pub fn into_bytes(&mut self) -> Vec<u8> {
-            let mut result = bytes2vec(self.header.to_bytes());
+            let mut result = bytes2vec(&self.header.to_bytes());
             result.append(&mut self.message_bytes);
             result
         }
 
-        pub fn size(&self) -> usize {
+        #[must_use] pub fn size(&self) -> usize {
             self.message_bytes.len()
         }
     }
 
-    /// Serialize a api::Message into a Vec<u8> for sending over sockets.
+    /// Serialize a `api::Message` into a `Vec<u8>` for sending over sockets.
     ///
-    /// This also produces a header which can be turned into bytes
+    /// # Returns
+    /// a `SerializedMessage`
+    ///
+    /// # Errors
+    /// if it cannot serialize the message
     pub fn serialize(message: &Message) -> Result<SerializedMessage, res::SerializationError> {
         let encoded_msg = bincode::serialize(message);
         match encoded_msg {
             Ok(dat) => {
-                let header = MessageHeader::new(&dat);
+                let header = msg::Header::new(&dat);
                 Ok(SerializedMessage {
                     message_bytes: dat,
                     header,
@@ -69,21 +74,29 @@ pub mod seri {
     /// Sends a message all in one go, to socket
     ///
     /// equivilant to doing
-    /// `let encoded = api::seri::serialize(&message).unwrap().as_bytes();`
-    /// `stream.write_all(&encoded).await.unwrap();`
-    /// including the part where it will panic, so if that is not desierable, DO IT DIFFERENTLY
-    /// this is mostly meant as a quick way to test new things, and not intended for final use
+    /// ```
+    /// let encoded = api::seri::serialize(&message).unwrap().as_bytes();
+    /// stream.write_all(&encoded).await.unwrap();
+    /// ```
+    ///
+    /// # Panics
+    /// if it could not serialize the message or write to the socket
     pub async fn fullsend(msg: &Message, socket: &mut TcpStream) {
         let encoded = self::serialize(msg).unwrap().into_bytes();
         socket.write_all(&encoded).await.unwrap();
     }
 
-    /// Recieve and deserialize a message from a TcpStream
+    /// Recieve and deserialize a message from a `TcpStream`
     /// asynchronus, and will not return untill is encounters a error, or reads one whole message
     ///
-    /// This is probably cancelation safe
+    /// # Cancelation Saftey
+    /// this is cancelation safe, however when canceled it will not store what it has read, so the next attempt to read and deserialize __will__ fail
     ///
-    /// If you want something that is non-blocking, then use the SocketMessageReader struct
+    /// # Errors
+    /// if one of these has happened while decoding:
+    /// - the client has disconnected
+    /// - there was a error while reading from the socket
+    /// - the message could not be deserialized
     pub async fn get_message_from_socket(
         socket: &mut TcpStream,
     ) -> Result<res::GetMessageResponse, res::GetMessageError> {
@@ -112,7 +125,7 @@ pub mod seri {
                 }
             }
         }
-        let header_r = MessageHeader::from_bytes(vec2bytes(Vec::from(header_buffer)));
+        let header_r = msg::Header::from_bytes(&vec2bytes(Vec::from(header_buffer)));
         match header_r {
             Ok(header) => {
                 let read_amnt = header.size();
@@ -157,19 +170,17 @@ pub mod seri {
                     }
                 }
             }
-            Err(err) => {
-                Err(res::GetMessageError::HeaderParser(err))
-            }
+            Err(err) => Err(res::GetMessageError::HeaderParser(err)),
         }
     }
 
     /// Creates `bytes::Bytes` from `Vec<u8>`
-    pub fn vec2bytes(data: Vec<u8>) -> Bytes {
+    #[must_use] pub fn vec2bytes(data: Vec<u8>) -> Bytes {
         Bytes::from(data)
     }
 
     /// Create `Vec<u8>` from `bytes::Bytes`
-    pub fn bytes2vec(data: Bytes) -> Vec<u8> {
+    #[must_use] pub fn bytes2vec(data: &Bytes) -> Vec<u8> {
         Vec::from(&data[..])
     }
 }
