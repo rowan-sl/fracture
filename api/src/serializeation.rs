@@ -1,8 +1,8 @@
 /// This module provides utils for serialization and deserialization of Messages.
 pub mod seri {
-    use crate::msg::{HEADER_LEN, HeaderParserError, Header};
-    use crate::msg::Message;
     use crate::msg;
+    use crate::msg::Message;
+    use crate::msg::{Header, HeaderParserError, HEADER_LEN};
     use bytes::Bytes;
     use tokio::io::AsyncWriteExt;
     use tokio::net::TcpStream;
@@ -45,7 +45,8 @@ pub mod seri {
             result
         }
 
-        #[must_use] pub fn size(&self) -> usize {
+        #[must_use]
+        pub fn size(&self) -> usize {
             self.message_bytes.len()
         }
     }
@@ -175,12 +176,14 @@ pub mod seri {
     }
 
     /// Creates `bytes::Bytes` from `Vec<u8>`
-    #[must_use] pub fn vec2bytes(data: Vec<u8>) -> Bytes {
+    #[must_use]
+    pub fn vec2bytes(data: Vec<u8>) -> Bytes {
         Bytes::from(data)
     }
 
     /// Create `Vec<u8>` from `bytes::Bytes`
-    #[must_use] pub fn bytes2vec(data: &Bytes) -> Vec<u8> {
+    #[must_use]
+    pub fn bytes2vec(data: &Bytes) -> Vec<u8> {
         Vec::from(&data[..])
     }
 }

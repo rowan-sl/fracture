@@ -9,7 +9,7 @@ use api::msg;
 use api::seri;
 
 use crate::conf;
-use crate::types::{ClientState, HandlerOperation, MessageHandler, ServerInfo, stati};
+use crate::types::{stati, ClientState, HandlerOperation, MessageHandler, ServerInfo};
 
 pub struct Client {
     sock: TcpStream,
@@ -178,8 +178,7 @@ impl Client {
                 }
             }
         }
-        let header_r =
-            api::msg::Header::from_bytes(&seri::vec2bytes(Vec::from(header_buffer)));
+        let header_r = api::msg::Header::from_bytes(&seri::vec2bytes(Vec::from(header_buffer)));
         match header_r {
             Ok(header) => {
                 let read_amnt = header.size();
@@ -243,7 +242,8 @@ impl Client {
             if let msg::MessageVarient::ServerForceDisconnect {
                 reason,
                 close_message,
-            } = stat.msg.data {
+            } = stat.msg.data
+            {
                 stati::UpdateReadStatus::ServerClosed {
                     reason,
                     close_message,

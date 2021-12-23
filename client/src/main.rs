@@ -11,7 +11,7 @@ use tokio::task;
 use api::msg;
 
 use client::Client;
-use types::{ShutdownMessage, stati};
+use types::{stati, ShutdownMessage};
 
 #[tokio::main]
 async fn main() {
@@ -30,7 +30,7 @@ async fn main() {
                             use msg::types::ServerDisconnectReason;
                             match reason {
                                 ServerDisconnectReason::ClientRequestedDisconnect => {
-                                    println!("this should never happen...");
+                                    panic!("this should never happen...");
                                 }
                                 ServerDisconnectReason::Closed => {
                                     println!("Server closed with message {}", close_message);

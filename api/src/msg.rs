@@ -76,12 +76,12 @@ pub enum MessageVarient {
     },
 
     /// A chat message to be distributed and sent to other clients.
-    /// 
+    ///
     ///TODO finish
     IncomingChatMessage { content: String },
 
     /// A chat message to be received and handled by the client.
-    /// 
+    ///
     ///TODO finish
     OutgoingChatMessage {
         sender: String,
@@ -127,14 +127,16 @@ impl Header {
     ///
     /// # Panics
     /// if it cannot convert msg.len() to u64
-    #[must_use] pub fn new(msg: &[u8]) -> Self {
+    #[must_use]
+    pub fn new(msg: &[u8]) -> Self {
         Self {
             msg_size: u64::try_from(msg.len()).unwrap(),
         }
     }
 
     /// Creates a header of size 0
-    #[must_use] pub const fn blank() -> Self {
+    #[must_use]
+    pub const fn blank() -> Self {
         Self { msg_size: 0 }
     }
 
@@ -142,12 +144,14 @@ impl Header {
     ///
     /// # Panics
     /// if it cannot convert the `msg_size` to usize
-    #[must_use] pub fn size(&self) -> usize {
+    #[must_use]
+    pub fn size(&self) -> usize {
         usize::try_from(self.msg_size).unwrap()
     }
 
     /// Converts the message header to `Bytes`
-    #[must_use] pub fn to_bytes(&mut self) -> bytes::Bytes {
+    #[must_use]
+    pub fn to_bytes(&mut self) -> bytes::Bytes {
         let mut result = bytes::BytesMut::new();
         result.put(&b"ds-header"[..]);
         result.put_u64(self.msg_size);
@@ -170,14 +174,11 @@ impl Header {
             if &header_end[..] != b"header-end" {
                 return Err(HeaderParserError::InvalidSuffix);
             }
-            Ok(
-                Self {
-                    msg_size: message_size.get_u64()
-                }
-            )
+            Ok(Self {
+                msg_size: message_size.get_u64(),
+            })
         } else {
             Err(HeaderParserError::InvalidLength)
         }
     }
 }
-

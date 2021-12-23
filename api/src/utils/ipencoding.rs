@@ -73,7 +73,8 @@ const fn letter2int(ltr: char) -> Result<u8, char> {
     }
 }
 
-#[must_use] fn num_to_code(mut num: u128) -> String {
+#[must_use]
+fn num_to_code(mut num: u128) -> String {
     let mut res = String::new();
     loop {
         let dig = int2letter(num % 25);
@@ -87,7 +88,8 @@ const fn letter2int(ltr: char) -> Result<u8, char> {
     res.chars().rev().collect::<String>()
 }
 
-#[must_use] fn code_to_num(mut code: String) -> u128 {
+#[must_use]
+fn code_to_num(mut code: String) -> u128 {
     let mut res: u128 = 0;
     code.make_ascii_uppercase();
     for ch in code.chars() {
@@ -98,7 +100,8 @@ const fn letter2int(ltr: char) -> Result<u8, char> {
     res
 }
 
-#[must_use] pub fn ip_to_code(ip: std::net::SocketAddrV4) -> String {
+#[must_use]
+pub fn ip_to_code(ip: std::net::SocketAddrV4) -> String {
     let addr = ip.ip();
     let pts = addr.octets();
 
@@ -114,7 +117,7 @@ const fn letter2int(ltr: char) -> Result<u8, char> {
     combined += u128::from(addr_pt2) * 1_000;
     combined += u128::from(addr_pt3) * 1_000_000;
     combined += u128::from(addr_pt4) * 1_000_000_000;
-    combined += u128::from(port)     * 1_000_000_000_000;
+    combined += u128::from(port) * 1_000_000_000_000;
     num_to_code(combined)
 }
 
@@ -125,20 +128,21 @@ const fn letter2int(ltr: char) -> Result<u8, char> {
 ///
 /// # Panics
 /// if the number decoded from the codes cannot be converted into `u8` or `u16` for the address and port respectively
-#[must_use] pub fn code_to_ip(code: String) -> std::net::SocketAddrV4 {
+#[must_use]
+pub fn code_to_ip(code: String) -> std::net::SocketAddrV4 {
     let mut combined = code_to_num(code);
 
     let addr_pt1 = combined / 1_000_000_000_000;
-    combined -= addr_pt1 *    1_000_000_000_000;
+    combined -= addr_pt1 * 1_000_000_000_000;
 
     let addr_pt2 = combined / 1_000_000_000;
-    combined -= addr_pt2 *    1_000_000_000;
+    combined -= addr_pt2 * 1_000_000_000;
 
     let addr_pt3 = combined / 1_000_000;
-    combined -= addr_pt3 *    1_000_000;
+    combined -= addr_pt3 * 1_000_000;
 
     let addr_pt4 = combined / 1_000;
-    combined -= addr_pt4 *    1_000;
+    combined -= addr_pt4 * 1_000;
 
     let port = combined;
 

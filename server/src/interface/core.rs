@@ -2,8 +2,8 @@
 //TODO implement and test a message handler
 //TODO implement handler operations
 
-use api::msg::HEADER_LEN;
 use api::msg;
+use api::msg::HEADER_LEN;
 use queues::queue;
 use queues::IsQueue;
 use queues::Queue;
