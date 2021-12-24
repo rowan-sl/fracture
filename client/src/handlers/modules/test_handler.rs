@@ -1,4 +1,4 @@
-use crate::handlers::imports::{MessageHandler, HandlerOperation};
+use crate::handlers::imports::{MessageHandler, HandlerOperation, GlobalHandlerOperation};
 use api::msg::MessageVarient::TestMessageResponse;
 
 pub struct TestHandler {
@@ -24,6 +24,9 @@ impl MessageHandler for TestHandler {
             return false;
         }
     }
+
+    fn handle_global_op(&mut self, _op: &GlobalHandlerOperation) {}
+    fn get_global_operations(&mut self) -> Option<Vec<GlobalHandlerOperation>> {None}
 
     fn get_operations(&mut self) -> Option<Vec<Self::Operation>> {
         if self.pending.len() == 0 {
