@@ -84,6 +84,7 @@ pub trait SocketUtils {
                                 > = bincode::deserialize(&buffer[..]);
                                 match deserialized {
                                     Ok(msg) => {
+                                        if crate::conf::SOCK_DBG{println!("Receved:\n{:#?}", msg);}
                                         return Ok(ReadMessageStatus {
                                             msg,
                                             bytes: buffer.len(),
@@ -109,6 +110,7 @@ pub trait SocketUtils {
     }
 
     async fn send_message(&mut self, message: crate::msg::Message) -> SendStatus {
+        if crate::conf::SOCK_DBG{println!("Sent:\n{:#?}", message);}
         let socket = self.get_sock();
         let serialized_msg_res = crate::seri::serialize(&message);
         match serialized_msg_res {

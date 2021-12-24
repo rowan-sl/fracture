@@ -2,7 +2,7 @@
 /// All handlers must be `Send`
 pub trait MessageHandler {
     type Operation;
-    fn new() -> Self
+    fn new() -> Box<Self>
     where
         Self: Sized;
 

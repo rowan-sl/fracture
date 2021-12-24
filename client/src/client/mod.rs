@@ -6,7 +6,6 @@ use tokio::net::TcpStream;
 use uuid::Uuid;
 
 use api::msg;
-use api::seri;
 use api::SocketUtils;
 use api::stat::SendStatus;
 use api::handler::MessageHandler;
@@ -16,13 +15,13 @@ use crate::types::{stati, ClientState, HandlerOperation, ServerInfo};
 
 pub struct Client {
     sock: TcpStream,
-    incoming: Queue<msg::Message>,
+    pub incoming: Queue<msg::Message>,
     outgoing: Queue<msg::Message>,
     /// Pending handler operations
-    pending_op: Queue<HandlerOperation>,
+    pub pending_op: Queue<HandlerOperation>,
     handlers: Vec<Box<dyn MessageHandler<Operation = HandlerOperation> + Send>>,
     server_info: Option<ServerInfo>,
-    state: ClientState,
+    pub state: ClientState,
 }
 
 impl Client {
@@ -87,19 +86,7 @@ impl Client {
         let value = self.outgoing.remove();
         match value {
             Ok(v) => {
-                let serialized_msg_res = seri::serialize(&v);
-                match serialized_msg_res {
-                    Ok(mut serialized_msg) => {
-                        let wrote_size = serialized_msg.size();
-                        let b_data = serialized_msg.into_bytes();
-                        let write_status = self.sock.write_all(&b_data).await;
-                        match write_status {
-                            Ok(_) => SendStatus::Sent(wrote_size),
-                            Err(err) => SendStatus::Failure(err),
-                        }
-                    }
-                    Err(err) => SendStatus::SeriError(err),
-                }
+                self.send_message(v).await
             }
             Err(_err) => SendStatus::NoTask, //Do nothing as there is nothing to do ;)
         }
@@ -180,13 +167,19 @@ impl Client {
         match &self.state {
             Begin => {
                 // send message to server about the client
-                self.queue_msg(api::common::gen_connect(String::from(conf::NAME)));
+                match self.send_message(api::common::gen_connect(String::from(conf::NAME))).await {
+                    api::stat::SendStatus::Sent ( _ ) => {},
+                    err => {
+                        eprintln!("Failed to send connect message:\n{:#?}", err);
+                        return stati::UpdateStatus::SendError(err);
+                    }
+                };
                 self.state = Hanshake;
                 Success
             }
             Hanshake => {
                 // receive server data
-                let next = self.outgoing.remove();
+                let next = self.incoming.remove();
                 match next {
                     Ok(msg) => {
                         match msg.data {
@@ -271,6 +264,10 @@ impl Client {
             Ok(op) => {
                 match op {
                     HandlerOperation::InterfaceOperation(_inter_op) => Ok(Some(op)),
+                    HandlerOperation::ServerMsg {msg} => {
+                        self.queue_msg(msg);
+                        return Ok(None);
+                    }
                     #[allow(unreachable_patterns)] // this is a GOOD thing
                     _ => Err(Some(op)),
                 }

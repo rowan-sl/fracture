@@ -7,6 +7,8 @@ use api::stat;
 
 use crate::conf::NAME;
 use crate::interface::core::{stati, ClientInterface};
+use crate::handlers::get_default_handlers;
+
 
 #[derive(Clone, Debug)]
 pub struct ShutdownMessage {
@@ -20,7 +22,7 @@ pub async fn handle_client(
 ) -> task::JoinHandle<()> {
     let mut client_shutdown_channel = shutdown_sender.subscribe(); //make shure to like and
     tokio::spawn(async move {
-        let mut interface = ClientInterface::new(socket, String::from(NAME), vec![]);
+        let mut interface = ClientInterface::new(socket, String::from(NAME), get_default_handlers());
         println!(
             "Connected to {:?}, reported ip {:?}",
             addr,
@@ -33,7 +35,7 @@ pub async fn handle_client(
                     match stat {
                         stati::UpdateReadStatus::Disconnected => {
                             println!("{:?} disconnected", addr);
-                            interface.close(String::from(""), true, false).await;// do not notify the client of disconnecting, as it is already disconnected
+                            interface.close(String::from(""), None).await;// do not notify the client of disconnecting, as it is already disconnected
                             break;
                         },
                         stati::UpdateReadStatus::ReadError ( err_or_disconnect ) => {
@@ -58,20 +60,63 @@ pub async fn handle_client(
                         },
                         stati::UpdateReadStatus::GracefullDisconnect => {
                             println!("{:?} gracefully disconnected", addr);
-                            interface.close(String::from(""), true, true).await;
+                            interface.close(String::from(""), Some(api::msg::types::ServerDisconnectReason::ClientRequestedDisconnect)).await;
                             break;
                         },
                         stati::UpdateReadStatus::Sucsess => {}
                     };
                 }
                 _ = wait_update_time() => {//update loop
-                    interface.update_process_all().await;
+                    match interface.update().await {
+                        stati::UpdateStatus::ClientKicked (reason) => {
+                            //TODO this should actualy never happen, so remove it or implement it
+                            eprintln!("Kicked client for invalid connection!");
+                            interface.close(reason, Some(api::msg::types::ServerDisconnectReason::InvalidConnectionSequence)).await;
+                            break;
+                        }
+                        stati::UpdateStatus::Unexpected (msg) => {
+                            //TODO make this a error
+                            eprintln!("Unexpected message {:#?}", msg);
+                        }
+                        stati::UpdateStatus::Unhandled (msg) => {
+                            //TODO make this a error too
+                            eprintln!("Unhandled message:\n{:#?}", msg);
+                        }
+                        stati::UpdateStatus::SendError(err) => {
+                            eprintln!("Send error: {:#?}", err);
+                            interface.close(String::from(""), None).await;
+                            break;
+                        }
+                        _ => {}//these should be Noop and Success, so no issue ignoring them
+                    };
+                    interface.collect_actions();
+                    loop {
+                        match interface.execute_action().await {
+                            Err(oper) => {
+                                match oper {
+                                    Some(unexpected_op) => {
+                                        // a message was not explicitly pased on or dealt with
+                                        //TODO make this a error
+                                        println!("Unhandled operation:\n{:#?}", unexpected_op);
+                                    }
+                                    None => {
+                                        break;
+                                    }
+                                }
+                            }
+                            Ok(pos_msg) => {
+                                if let Some(_msg) = pos_msg {
+                                    //TODO add handling things here
+                                }
+                            }
+                        };
+                    }
                     if let stati::MultiSendStatus::Failure(err) = interface.send_all_queued().await {
                         match err {
                             stat::SendStatus::Failure (ioerr) => {
                                 if ioerr.kind() == std::io::ErrorKind::NotConnected {
                                     println!("{:?} disconnected", addr);
-                                    interface.close(String::from(""), true, false).await;// do not notify the client of disconnecting, as it is already disconnected
+                                    interface.close(String::from(""), None).await;// do not notify the client of disconnecting, as it is already disconnected
                                 } else {
                                     panic!("Error while sending messages:\n{:#?}", ioerr);
                                 }
@@ -86,8 +131,7 @@ pub async fn handle_client(
                 }
                 smsg = client_shutdown_channel.recv() => {
                     println!("Closing connection to {:?}", addr);
-                    interface.update_process_all().await;
-                    interface.close(smsg.unwrap().reason, false, false).await;
+                    interface.close(smsg.unwrap().reason, None).await;
                     break;
                 }
             };

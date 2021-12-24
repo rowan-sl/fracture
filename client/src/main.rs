@@ -1,6 +1,7 @@
 mod client;
 mod conf;
 mod types;
+mod handlers;
 
 use tokio::io;
 use tokio::join;
@@ -15,6 +16,7 @@ use api::stat;
 
 use client::Client;
 use types::{stati, ShutdownMessage};
+use handlers::get_default_handlers;
 
 #[tokio::main]
 async fn main() {
@@ -43,7 +45,10 @@ async fn main() {
 fn get_main_task(shutdown_tx: Sender<ShutdownMessage>, stream: TcpStream) -> JoinHandle<()> {
     tokio::spawn(async move {
         let mut close_rcv = shutdown_tx.subscribe();
-        let mut client = Client::new(stream, vec![]);
+        let mut client = Client::new(stream, get_default_handlers());
+        client.queue_msg(api::msg::Message{//TODO remove this, as it is a test
+            data: api::msg::MessageVarient::TestMessage {}
+        });
         loop {
             tokio::select! {
                 stat = client.update_read() => {
@@ -81,17 +86,22 @@ fn get_main_task(shutdown_tx: Sender<ShutdownMessage>, stream: TcpStream) -> Joi
                     match client.update().await {
                         stati::UpdateStatus::ConnectionRefused => {
                             //TODO this should actualy never happen, so remove it or implement it
-                            println!("Connection to server refused!");
+                            eprintln!("Connection to server refused!");
                             client.close(stati::CloseType::ServerDisconnected).await;
                             break;
                         }
                         stati::UpdateStatus::Unexpected (msg) => {
                             //TODO make this a error
-                            println!("Unexpected message {:#?}", msg);
+                            eprintln!("Unexpected message {:#?}", msg);
                         }
                         stati::UpdateStatus::Unhandled (msg) => {
                             //TODO make this a error too
-                            println!("Unhandled message:\n{:#?}", msg);
+                            eprintln!("Unhandled message:\n{:#?}", msg);
+                        }
+                        stati::UpdateStatus::SendError(err) => {
+                            eprintln!("Send error: {:#?}", err);
+                            client.close(stati::CloseType::Force).await;
+                            break;
                         }
                         _ => {}//these should be Noop and Success, so no issue ignoring them
                     };

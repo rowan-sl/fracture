@@ -91,6 +91,9 @@ pub enum MessageVarient {
         uuid: u128,
         message: String,
     },
+
+    TestMessage {},
+    TestMessageResponse {},
 }
 
 /// Hello, hello, can you hear me?

@@ -36,6 +36,7 @@ pub mod stati {
 
     pub enum UpdateStatus {
         Unexpected(msg::Message),
+        SendError(api::stat::SendStatus),
         Success,
         Unhandled(msg::Message),
         ConnectionRefused,
@@ -49,13 +50,15 @@ pub enum InterfaceOperation {}
 
 //TODO add more of these
 /// Operations that a `MessageHandler` can request occur
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Debug)]
 pub enum HandlerOperation {
     /// Do a program operation
     #[allow(dead_code)]
     InterfaceOperation(InterfaceOperation),
+    ServerMsg{msg: api::msg::Message},
 }
 
+#[derive(Debug)]
 pub enum ClientState {
     /// nothing has happened
     Begin,

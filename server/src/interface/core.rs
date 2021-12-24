@@ -22,10 +22,15 @@ pub mod stati {
     }
 
     #[derive(Debug)]
-    #[allow(dead_code)]
     pub enum UpdateStatus {
         Sucsess,
         Noop,
+        ClientKicked(String),
+        #[allow(dead_code)]
+        Unexpected(api::msg::Message),
+        #[allow(dead_code)]
+        SendError(api::stat::SendStatus),
+        Unhandled(api::msg::Message),
     }
 
     #[derive(Debug)]
@@ -39,6 +44,7 @@ pub mod stati {
 
 /// Operations that a `MessageHandler` can request
 #[allow(dead_code)]
+#[derive(Clone, Debug)]
 pub enum HandlerOperation {
     /// Send a public message to all other users
     Public { msg: msg::Message },
@@ -49,6 +55,7 @@ pub enum HandlerOperation {
 }
 
 //TODO this
+#[derive(Debug)]
 pub enum InterfaceState {
     /// Begining state, in this state it is waiting for the client to send ConnectMessage
     Start,
@@ -66,6 +73,7 @@ pub struct ClientInterface {
     state: InterfaceState,
     /// Handlers for messages, to be asked to handle new incoming messages
     handlers: Vec<Box<dyn MessageHandler<Operation = HandlerOperation> + Send>>,
+    pending_op: Queue<HandlerOperation>,
     server_name: String,
     client_name: Option<String>,
     uuid: uuid::Uuid,
@@ -84,6 +92,7 @@ impl ClientInterface {
             state: InterfaceState::Start,
             handlers,
             socket,
+            pending_op: queue![],
             server_name: name,
             client_name: None,
             uuid: uuid::Uuid::new_v4(),
@@ -106,23 +115,17 @@ impl ClientInterface {
     /// does NOT send any queued messages, as that is kinda pointless since the client could not reply and may become confused
     pub async fn close(
         &mut self,
-        reason: String,
-        expect_alredy_shutdown: bool,
-        client_requested: bool,
+        disconn_msg: String,
+        pos_reason: Option<api::msg::types::ServerDisconnectReason>,
     ) {
         //TODO make it send a shutdown message and clear queue and stuff
-        if !expect_alredy_shutdown {
+        if let Some(reason) = pos_reason {
             // only send queued messages if it isnt alredy shutdown (or at least know it is)
-            let dconn_reason = if client_requested {
-                api::msg::types::ServerDisconnectReason::ClientRequestedDisconnect
-            } else {
-                api::msg::types::ServerDisconnectReason::Closed
-            };
             match self
                 .send_message(api::msg::Message {
                     data: api::msg::MessageVarient::ServerForceDisconnect {
-                        reason: dconn_reason,
-                        close_message: reason,
+                        reason,
+                        close_message: disconn_msg,
                     },
                 })
                 .await
@@ -148,11 +151,7 @@ impl ClientInterface {
             Ok(_) => {}
             Err(err) => {
                 //Socket is already shutdown
-                if err.kind() == std::io::ErrorKind::NotConnected {
-                    if !expect_alredy_shutdown {
-                        println!("Socket was expected to be open, but it was not!");
-                    }
-                } else {
+                if err.kind() != std::io::ErrorKind::NotConnected {
                     println!("Error whilst closing connection: {:#?}", err);
                 }
             }
@@ -179,19 +178,7 @@ impl ClientInterface {
         let value = self.to_send.remove();
         match value {
             Ok(v) => {
-                let serialized_msg_res = api::seri::serialize(&v);
-                match serialized_msg_res {
-                    Ok(mut serialized_msg) => {
-                        let wrote_size = serialized_msg.size();
-                        let b_data = serialized_msg.into_bytes();
-                        let write_status = self.socket.write_all(&b_data).await;
-                        match write_status {
-                            Ok(_) => stat::SendStatus::Sent(wrote_size),
-                            Err(err) => stat::SendStatus::Failure(err),
-                        }
-                    }
-                    Err(err) => stat::SendStatus::SeriError(err),
-                }
+                self.send_message(v).await
             }
             Err(_err) => stat::SendStatus::NoTask, //Do nothing as there is nothing to do ;)
         }
@@ -241,47 +228,49 @@ impl ClientInterface {
 
     /// Process a message, and queue apropreate responses for sending
     /// returns if the message was handled or not
-    async fn process(&mut self, msg: api::msg::Message) -> bool {
+    pub async fn update(&mut self) -> stati::UpdateStatus {
         // The ping message should always be a valid thing to send/rcv
         use api::msg::{types, Message, MessageVarient};
-        if let MessageVarient::Ping = msg.data {
-            self.queue_message(Message {
-                data: MessageVarient::Pong,
-            })
-            .unwrap();
-            return true;
+        if let Ok(msg) = self.incoming.peek() {
+            if let MessageVarient::Ping = msg.data {
+                self.incoming.remove().unwrap();
+                self.queue_message(Message {
+                    data: MessageVarient::Pong,
+                })
+                .unwrap();
+                return stati::UpdateStatus::Sucsess;
+            }
         }
         // handle everything else
         match self.state {
             InterfaceState::Start => {
-                match msg.data {
-                    MessageVarient::ConnectMessage { name } => {
-                        //TODO make this actulay handle users (with the user state handler) (mabey later)
-                        self.client_name = Some(name);
-                        println!(
-                            "Client named itself and completed auth: {:#?}",
-                            self.name().unwrap()
-                        );
-                        self.state = InterfaceState::RecevedConnectMessage;
-                    }
-                    other => {
-                        println!(
-                            "Recieved {:#?} from client {:?} instead of connect message!",
-                            other,
-                            self.get_client_addr()
-                        );
-                        self.queue_message(Message {
-                            data: MessageVarient::ServerForceDisconnect {
-                                close_message: format!(
+                if let Ok(msg) = self.incoming.remove() {
+                    match msg.data {
+                        MessageVarient::ConnectMessage { name } => {
+                            //TODO make this actulay handle users (with the user state handler) (mabey later)
+                            self.client_name = Some(name);
+                            println!(
+                                "Client named itself and completed auth: {:#?}",
+                                self.name().unwrap()
+                            );
+                            self.state = InterfaceState::RecevedConnectMessage;
+                            return stati::UpdateStatus::Sucsess;
+                        }
+                        other => {
+                            println!(
+                                "Recieved {:#?} from client {:?} instead of connect message!",
+                                other,
+                                self.get_client_addr()
+                            );
+                            return stati::UpdateStatus::ClientKicked(
+                                format!(
                                     "Recieved {:#?} instead of connect message!",
                                     other
-                                ),
-                                reason: types::ServerDisconnectReason::InvalidConnectionSequence,
-                            },
-                        })
-                        .unwrap();
-                    }
-                };
+                                )
+                            );
+                        }
+                    };
+                }
             }
             InterfaceState::RecevedConnectMessage => {
                 self.queue_message(Message {
@@ -294,23 +283,70 @@ impl ClientInterface {
                 })
                 .unwrap();
                 self.state = InterfaceState::Ready;
+                return stati::UpdateStatus::Sucsess;
             }
             InterfaceState::Ready => {
                 // normal stuff handling
-                let mut handeld = false;
-                for h in &mut self.handlers {
-                    let result = h.handle(&msg);
-                    if result {
-                        handeld = true;
-                        break;
+                if let Ok(msg) = self.incoming.remove() {
+                    let mut handeld = false;
+                    for h in &mut self.handlers {
+                        let result = h.handle(&msg);
+                        if result {
+                            handeld = true;
+                            break;
+                        }
                     }
-                }
-                if !handeld {
-                    return false;
+                    if handeld {
+                        return stati::UpdateStatus::Sucsess;
+                    } else {
+                        return stati::UpdateStatus::Unhandled(msg);
+                    }
                 }
             }
         };
-        true
+        stati::UpdateStatus::Noop
+    }
+
+    /// Collects pending actions from handlers and stores them internaly
+    pub fn collect_actions(&mut self) {
+        for h in &mut self.handlers {
+            if let Some(ops) = h.get_operations() {
+                // println!("Handler gave operations:\n{:#?}", ops);
+                for op in ops {
+                    self.pending_op.add(op).unwrap();
+                }
+            }
+        }
+    }
+
+    /// Handles one handler action, returning it if it requires further processing by other code (interface operations)
+    ///
+    /// Errors: if it does not know what to do with the operation
+    ///
+    /// Ok(Some()) -> you need to deal with it
+    ///
+    /// Ok(None) -> you dont have to do anything
+    ///
+    /// Err(Some()) -> we dont know what to do with this
+    ///
+    /// Err(None) -> Nothing to do
+    pub async fn execute_action(
+        &mut self,
+    ) -> Result<Option<HandlerOperation>, Option<HandlerOperation>> {
+        let op = self.pending_op.remove();
+        // println!("Executing operations:\n{:#?}", op);
+        match op {
+            Ok(op) => {
+                match op {
+                    HandlerOperation::Client {msg} => {
+                        self.queue_message(msg).unwrap();
+                        return Ok(None);
+                    }
+                    _ => Err(Some(op)),
+                }
+            }
+            Err(_) => Err(None),
+        }
     }
 
     /// Handles the reading message half of updating the client.
@@ -337,13 +373,6 @@ impl ClientInterface {
                 stat::ReadMessageError::Disconnected => stati::UpdateReadStatus::Disconnected,
                 err => stati::UpdateReadStatus::ReadError(err),
             },
-        }
-    }
-
-    /// Process all messages
-    pub async fn update_process_all(&mut self) {
-        while let Ok(msg) = self.incoming.remove() {
-            self.process(msg).await;
         }
     }
 }

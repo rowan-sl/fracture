@@ -1,5 +1,5 @@
 use crate::handlers::imports::{MessageHandler, HandlerOperation};
-use api::msg::MessageVarient::TestMessage;
+use api::msg::MessageVarient::TestMessageResponse;
 
 pub struct TestHandler {
     pending: Vec<HandlerOperation>,
@@ -17,9 +17,8 @@ impl MessageHandler for TestHandler {
     }
 
     fn handle(&mut self, msg: &api::msg::Message) -> bool {
-        if let TestMessage {} = msg.data {
-            println!("Received test message");
-            self.pending.push(HandlerOperation::Client {msg: api::msg::Message {data: api::msg::MessageVarient::TestMessageResponse {}}});
+        if let TestMessageResponse {} = msg.data {
+            println!("Received test message response");
             return true;
         } else {
             return false;
