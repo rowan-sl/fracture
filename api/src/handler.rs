@@ -12,4 +12,9 @@ pub trait MessageHandler {
 
     /// Get operations that the handler is requesting the interface do
     fn get_operations(&mut self) -> Option<Vec<Self::Operation>>;
+
+    /// Get all operations that are performed on startup, with no prompting
+    ///
+    /// These are performed after the auth/handshake step
+    fn get_default_operations(&mut self) -> Vec<Self::Operation>;
 }

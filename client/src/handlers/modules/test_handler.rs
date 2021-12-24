@@ -34,4 +34,14 @@ impl MessageHandler for TestHandler {
             return res;
         }
     }
+
+    fn get_default_operations(&mut self) -> Vec<Self::Operation> {
+        vec![
+            HandlerOperation::ServerMsg {
+                msg: api::msg::Message{
+                    data: api::msg::MessageVarient::TestMessage {}
+                }
+            }
+        ]
+    }
 }

@@ -35,4 +35,8 @@ impl MessageHandler for TestHandler {
             return res;
         }
     }
+
+    fn get_default_operations(&mut self) -> Vec<Self::Operation> {
+        vec![]
+    }
 }

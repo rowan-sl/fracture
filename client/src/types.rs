@@ -64,6 +64,8 @@ pub enum ClientState {
     Begin,
     /// sent the connect message, waiting for a response
     Hanshake,
+    /// Get all default operations
+    GetHandlerDefaultOps,
     /// Ready for normal stuff
     Ready,
 }

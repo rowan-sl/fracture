@@ -46,9 +46,6 @@ fn get_main_task(shutdown_tx: Sender<ShutdownMessage>, stream: TcpStream) -> Joi
     tokio::spawn(async move {
         let mut close_rcv = shutdown_tx.subscribe();
         let mut client = Client::new(stream, get_default_handlers());
-        client.queue_msg(api::msg::Message{//TODO remove this, as it is a test
-            data: api::msg::MessageVarient::TestMessage {}
-        });
         loop {
             tokio::select! {
                 stat = client.update_read() => {

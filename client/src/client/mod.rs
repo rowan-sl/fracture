@@ -163,7 +163,7 @@ impl Client {
     /// Processes incoming messages, and then queues messages for sending
     pub async fn update(&mut self) -> stati::UpdateStatus {
         use stati::UpdateStatus::{Noop, Success, Unexpected, Unhandled};
-        use ClientState::{Begin, Hanshake, Ready};
+        use ClientState::{Begin, Hanshake, GetHandlerDefaultOps, Ready};
         match &self.state {
             Begin => {
                 // send message to server about the client
@@ -201,7 +201,7 @@ impl Client {
                                     client_uuid: real_uuid,
                                     name: server_name,
                                 });
-                                self.state = ClientState::Ready;
+                                self.state = ClientState::GetHandlerDefaultOps;
                                 Success
                             }
                             _ => Unexpected(msg),
@@ -209,6 +209,15 @@ impl Client {
                     }
                     Err(_) => Noop,
                 }
+            }
+            GetHandlerDefaultOps => {
+                for h in &mut self.handlers {
+                    for op in h.get_default_operations() {
+                        self.pending_op.add(op).unwrap();
+                    }
+                }
+                self.state = ClientState::Ready;
+                Success
             }
             Ready => {
                 let msg = match self.incoming.remove() {
