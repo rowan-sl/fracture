@@ -1,5 +1,6 @@
+#[derive(Clone, Debug)]
 pub enum GlobalHandlerOperation {
-
+    MsgAll { msg: crate::msg::Message },
 }
 
 /// Generic trait for createing a message handler.

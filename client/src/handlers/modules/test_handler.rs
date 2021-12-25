@@ -1,4 +1,4 @@
-use crate::handlers::imports::{MessageHandler, HandlerOperation, GlobalHandlerOperation};
+use crate::handlers::imports::{GlobalHandlerOperation, HandlerOperation, MessageHandler};
 use api::msg::MessageVarient::TestMessageResponse;
 
 pub struct TestHandler {
@@ -9,11 +9,7 @@ impl MessageHandler for TestHandler {
     type Operation = HandlerOperation;
 
     fn new() -> Box<Self> {
-        Box::new(
-            Self {
-                pending: vec![],
-            }
-        )
+        Box::new(Self { pending: vec![] })
     }
 
     fn handle(&mut self, msg: &api::msg::Message) -> bool {
@@ -26,7 +22,9 @@ impl MessageHandler for TestHandler {
     }
 
     fn handle_global_op(&mut self, _op: &GlobalHandlerOperation) {}
-    fn get_global_operations(&mut self) -> Option<Vec<GlobalHandlerOperation>> {None}
+    fn get_global_operations(&mut self) -> Option<Vec<GlobalHandlerOperation>> {
+        None
+    }
 
     fn get_operations(&mut self) -> Option<Vec<Self::Operation>> {
         if self.pending.len() == 0 {
@@ -39,12 +37,10 @@ impl MessageHandler for TestHandler {
     }
 
     fn get_default_operations(&mut self) -> Vec<Self::Operation> {
-        vec![
-            HandlerOperation::ServerMsg {
-                msg: api::msg::Message{
-                    data: api::msg::MessageVarient::TestMessage {}
-                }
-            }
-        ]
+        vec![HandlerOperation::ServerMsg {
+            msg: api::msg::Message {
+                data: api::msg::MessageVarient::TestMessage {},
+            },
+        }]
     }
 }

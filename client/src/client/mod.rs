@@ -5,10 +5,10 @@ use tokio::io::AsyncWriteExt;
 use tokio::net::TcpStream;
 use uuid::Uuid;
 
-use api::msg;
-use api::SocketUtils;
-use api::stat::SendStatus;
 use api::handler::MessageHandler;
+use api::msg;
+use api::stat::SendStatus;
+use api::SocketUtils;
 
 use crate::conf;
 use crate::types::{stati, ClientState, HandlerOperation, ServerInfo};
@@ -25,7 +25,10 @@ pub struct Client {
 }
 
 impl Client {
-    pub fn new(sock: TcpStream, handlers: Vec<Box<dyn MessageHandler<Operation = HandlerOperation> + Send>>) -> Self {
+    pub fn new(
+        sock: TcpStream,
+        handlers: Vec<Box<dyn MessageHandler<Operation = HandlerOperation> + Send>>,
+    ) -> Self {
         Self {
             sock,
             incoming: queue![],
@@ -85,9 +88,7 @@ impl Client {
     async fn send_queued_message(&mut self) -> SendStatus {
         let value = self.outgoing.remove();
         match value {
-            Ok(v) => {
-                self.send_message(v).await
-            }
+            Ok(v) => self.send_message(v).await,
             Err(_err) => SendStatus::NoTask, //Do nothing as there is nothing to do ;)
         }
     }
@@ -152,7 +153,9 @@ impl Client {
             }
         } else if let Err(err) = read {
             match err {
-                api::stat::ReadMessageError::Disconnected => stati::UpdateReadStatus::ServerDisconnect,
+                api::stat::ReadMessageError::Disconnected => {
+                    stati::UpdateReadStatus::ServerDisconnect
+                }
                 oerr => stati::UpdateReadStatus::ReadError(oerr),
             }
         } else {
@@ -163,12 +166,15 @@ impl Client {
     /// Processes incoming messages, and then queues messages for sending
     pub async fn update(&mut self) -> stati::UpdateStatus {
         use stati::UpdateStatus::{Noop, Success, Unexpected, Unhandled};
-        use ClientState::{Begin, Hanshake, GetHandlerDefaultOps, Ready};
+        use ClientState::{Begin, GetHandlerDefaultOps, Hanshake, Ready};
         match &self.state {
             Begin => {
                 // send message to server about the client
-                match self.send_message(api::common::gen_connect(String::from(conf::NAME))).await {
-                    api::stat::SendStatus::Sent ( _ ) => {},
+                match self
+                    .send_message(api::common::gen_connect(String::from(conf::NAME)))
+                    .await
+                {
+                    api::stat::SendStatus::Sent(_) => {}
                     err => {
                         eprintln!("Failed to send connect message:\n{:#?}", err);
                         return stati::UpdateStatus::SendError(err);
@@ -273,7 +279,7 @@ impl Client {
             Ok(op) => {
                 match op {
                     HandlerOperation::InterfaceOperation(_inter_op) => Ok(Some(op)),
-                    HandlerOperation::ServerMsg {msg} => {
+                    HandlerOperation::ServerMsg { msg } => {
                         self.queue_msg(msg);
                         return Ok(None);
                     }

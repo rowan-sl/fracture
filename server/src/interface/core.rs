@@ -7,11 +7,14 @@ use queues::IsQueue;
 use queues::Queue;
 use tokio::io::AsyncWriteExt;
 use tokio::net::TcpStream;
+use tokio::sync::broadcast;
+use tokio::sync::broadcast::error::TryRecvError;
 
+use api::handler::MessageHandler;
+use api::handler::GlobalHandlerOperation;
 use api::msg;
 use api::stat;
 use api::SocketUtils;
-use api::handler::MessageHandler;
 
 pub mod stati {
     use api::stat;
@@ -46,12 +49,8 @@ pub mod stati {
 #[allow(dead_code)]
 #[derive(Clone, Debug)]
 pub enum HandlerOperation {
-    /// Send a public message to all other users
-    Public { msg: msg::Message },
     /// Send a message back to the client
     Client { msg: msg::Message },
-    /// Send a chat message to all other clients
-    Chat { message_content: String },
 }
 
 //TODO this
@@ -74,6 +73,9 @@ pub struct ClientInterface {
     /// Handlers for messages, to be asked to handle new incoming messages
     handlers: Vec<Box<dyn MessageHandler<Operation = HandlerOperation> + Send>>,
     pending_op: Queue<HandlerOperation>,
+    global_handler_rx: broadcast::Receiver<GlobalHandlerOperation>,
+    global_handler_tx: broadcast::Sender<GlobalHandlerOperation>,
+    pending_global_ops: Queue<GlobalHandlerOperation>,
     server_name: String,
     client_name: Option<String>,
     uuid: uuid::Uuid,
@@ -85,7 +87,9 @@ impl ClientInterface {
         socket: TcpStream,
         name: String,
         handlers: Vec<Box<dyn MessageHandler<Operation = HandlerOperation> + Send>>,
+        global_handler_channel: broadcast::Sender<GlobalHandlerOperation>,
     ) -> Self {
+        let global_handler_rx = global_handler_channel.subscribe();
         Self {
             to_send: queue![],
             incoming: queue![],
@@ -93,6 +97,9 @@ impl ClientInterface {
             handlers,
             socket,
             pending_op: queue![],
+            pending_global_ops: queue![],
+            global_handler_tx: global_handler_channel,
+            global_handler_rx,
             server_name: name,
             client_name: None,
             uuid: uuid::Uuid::new_v4(),
@@ -159,12 +166,17 @@ impl ClientInterface {
     }
 
     #[allow(dead_code)]
-    pub fn register_handler(&mut self, handler: Box<dyn MessageHandler<Operation = HandlerOperation> + Send>) {
+    pub fn register_handler(
+        &mut self,
+        handler: Box<dyn MessageHandler<Operation = HandlerOperation> + Send>,
+    ) {
         self.handlers.push(handler);
     }
 
     #[allow(dead_code)]
-    pub fn get_handlers(&mut self) -> &mut Vec<Box<dyn MessageHandler<Operation = HandlerOperation> + Send>> {
+    pub fn get_handlers(
+        &mut self,
+    ) -> &mut Vec<Box<dyn MessageHandler<Operation = HandlerOperation> + Send>> {
         &mut self.handlers
     }
 
@@ -177,9 +189,7 @@ impl ClientInterface {
     async fn send_queued_message(&mut self) -> stat::SendStatus {
         let value = self.to_send.remove();
         match value {
-            Ok(v) => {
-                self.send_message(v).await
-            }
+            Ok(v) => self.send_message(v).await,
             Err(_err) => stat::SendStatus::NoTask, //Do nothing as there is nothing to do ;)
         }
     }
@@ -262,12 +272,10 @@ impl ClientInterface {
                                 other,
                                 self.get_client_addr()
                             );
-                            return stati::UpdateStatus::ClientKicked(
-                                format!(
-                                    "Recieved {:#?} instead of connect message!",
-                                    other
-                                )
-                            );
+                            return stati::UpdateStatus::ClientKicked(format!(
+                                "Recieved {:#?} instead of connect message!",
+                                other
+                            ));
                         }
                     };
                 }
@@ -336,16 +344,63 @@ impl ClientInterface {
         let op = self.pending_op.remove();
         // println!("Executing operations:\n{:#?}", op);
         match op {
-            Ok(op) => {
-                match op {
-                    HandlerOperation::Client {msg} => {
-                        self.queue_message(msg).unwrap();
-                        return Ok(None);
+            Ok(op) => match op {
+                HandlerOperation::Client { msg } => {
+                    self.queue_message(msg).unwrap();
+                    return Ok(None);
+                }
+                _ => Err(Some(op)),
+            },
+            Err(_) => Err(None),
+        }
+    }
+
+    /// Collects global actions from the handlers and sends them in the global operation channel
+    pub fn colloect_send_global_actions(&mut self) {
+        for h in &mut self.handlers {
+            if let Some(ops) = h.get_global_operations() {
+                for op in ops {
+                    match self.global_handler_tx.send(op) {
+                        Ok(_) => {}
+                        Err(err) => {
+                            eprintln!("No one cared: {:?}", err);
+                        }
                     }
-                    _ => Err(Some(op)),
                 }
             }
-            Err(_) => Err(None),
+        }
+    }
+
+    /// Collect global operations from the channel and store them internaly
+    pub fn collect_recv_global_actions(&mut self) {
+        loop {
+            match self.global_handler_rx.try_recv() {
+                Ok(op) => {
+                    self.pending_global_ops.add(op).unwrap();
+                }
+                Err(err) => {
+                    match err {
+                        TryRecvError::Closed => {
+                            panic!("No senders left! this should not happen");
+                        }
+                        TryRecvError::Lagged (amnt) => {
+                            panic!("Missed receiving {} global operations! if this continues, increase the max allowed ammount!", amnt);
+                        }
+                        TryRecvError::Empty => {
+                            break
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    /// Executes internaly stored global operations
+    pub fn execute_global_actions(&mut self) {
+        while let Ok(oper) = self.pending_global_ops.remove() {
+            for h in &mut self.handlers {
+                h.handle_global_op(&oper);
+            }
         }
     }
 

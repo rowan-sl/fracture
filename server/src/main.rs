@@ -1,10 +1,11 @@
 mod conf;
-mod interface;
 mod handlers;
+mod interface;
 
 use tokio::{io, net::TcpListener, sync::broadcast, task};
 
 use api::utils::ipencoding;
+use api::handler::GlobalHandlerOperation;
 
 use conf::ADDR;
 use interface::{handler::handle_client, handler::ShutdownMessage};
@@ -30,6 +31,10 @@ fn get_client_listener(
     shutdown_tx: broadcast::Sender<ShutdownMessage>,
 ) -> task::JoinHandle<io::Result<()>> {
     tokio::spawn(async move {
+        let (global_oper_tx, _): (
+            broadcast::Sender<GlobalHandlerOperation>,
+            broadcast::Receiver<GlobalHandlerOperation>,
+        ) = broadcast::channel(conf::GLOBAL_HANDLER_OP_LIMIT);
         let mut accepter_shutdown_rx = shutdown_tx.subscribe();
         // TODO make address configurable
         let listener = TcpListener::bind(ADDR).await?;
@@ -47,7 +52,7 @@ fn get_client_listener(
                         Ok(socket_addr) => {
                             let (socket, addr) = socket_addr;
 
-                            tasks.push(handle_client(socket, addr, &shutdown_tx).await);
+                            tasks.push(handle_client(socket, addr, &shutdown_tx, global_oper_tx.clone()).await);
                         },
                         Err(err) => {
                             println!("Error while accepting a client {:?}", err);

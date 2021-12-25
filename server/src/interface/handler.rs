@@ -1,14 +1,14 @@
 use tokio::net::TcpStream;
-use tokio::sync::broadcast::Sender;
+use tokio::sync::broadcast::{Sender};
 use tokio::task;
 
-use api::utils::wait_update_time;
 use api::stat;
+use api::utils::wait_update_time;
+use api::handler::GlobalHandlerOperation;
 
 use crate::conf::NAME;
-use crate::interface::core::{stati, ClientInterface};
 use crate::handlers::get_default_handlers;
-
+use crate::interface::core::{stati, ClientInterface};
 
 #[derive(Clone, Debug)]
 pub struct ShutdownMessage {
@@ -19,10 +19,12 @@ pub async fn handle_client(
     socket: TcpStream,
     addr: std::net::SocketAddr,
     shutdown_sender: &Sender<ShutdownMessage>,
+    global_handler_channel: Sender<GlobalHandlerOperation>,
 ) -> task::JoinHandle<()> {
     let mut client_shutdown_channel = shutdown_sender.subscribe(); //make shure to like and
     tokio::spawn(async move {
-        let mut interface = ClientInterface::new(socket, String::from(NAME), get_default_handlers());
+        let mut interface =
+            ClientInterface::new(socket, String::from(NAME), get_default_handlers(), global_handler_channel);
         println!(
             "Connected to {:?}, reported ip {:?}",
             addr,
@@ -111,6 +113,9 @@ pub async fn handle_client(
                             }
                         };
                     }
+                    interface.colloect_send_global_actions();
+                    interface.collect_recv_global_actions();
+                    interface.execute_global_actions();
                     if let stati::MultiSendStatus::Failure(err) = interface.send_all_queued().await {
                         match err {
                             stat::SendStatus::Failure (ioerr) => {

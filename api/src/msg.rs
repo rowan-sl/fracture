@@ -43,7 +43,9 @@ pub enum MessageVarient {
     DisconnectMessage {},
 
     /// Client sends this as its first message
-    ConnectMessage { name: String },
+    ConnectMessage {
+        name: String,
+    },
 
     //TODO this
     /// Server sends this after client sends `ConnectMessage`, with info about the server
@@ -78,7 +80,9 @@ pub enum MessageVarient {
     /// A chat message to be distributed and sent to other clients.
     ///
     ///TODO finish
-    IncomingChatMessage { content: String },
+    IncomingChatMessage {
+        content: String,
+    },
 
     /// A chat message to be received and handled by the client.
     ///

@@ -1,7 +1,7 @@
 mod client;
 mod conf;
-mod types;
 mod handlers;
+mod types;
 
 use tokio::io;
 use tokio::join;
@@ -11,12 +11,12 @@ use tokio::task;
 use tokio::task::JoinHandle;
 
 use api::msg;
-use api::utils::wait_update_time;
 use api::stat;
+use api::utils::wait_update_time;
 
 use client::Client;
-use types::{stati, ShutdownMessage};
 use handlers::get_default_handlers;
+use types::{stati, ShutdownMessage};
 
 #[tokio::main]
 async fn main() {

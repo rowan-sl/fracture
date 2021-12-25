@@ -55,7 +55,9 @@ pub enum HandlerOperation {
     /// Do a program operation
     #[allow(dead_code)]
     InterfaceOperation(InterfaceOperation),
-    ServerMsg{msg: api::msg::Message},
+    ServerMsg {
+        msg: api::msg::Message,
+    },
 }
 
 #[derive(Debug)]

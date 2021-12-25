@@ -1,5 +1,5 @@
-use tokio::net::TcpStream;
 use tokio::io::AsyncWriteExt;
+use tokio::net::TcpStream;
 
 pub mod stat {
     #[derive(Debug)]
@@ -84,11 +84,13 @@ pub trait SocketUtils {
                                 > = bincode::deserialize(&buffer[..]);
                                 match deserialized {
                                     Ok(msg) => {
-                                        if crate::conf::SOCK_DBG{println!("Receved:\n{:#?}", msg);}
+                                        if crate::conf::SOCK_DBG {
+                                            println!("Receved:\n{:#?}", msg);
+                                        }
                                         return Ok(ReadMessageStatus {
                                             msg,
                                             bytes: buffer.len(),
-                                        })
+                                        });
                                     }
                                     Err(err) => {
                                         return Err(ReadMessageError::DeserializationError(err));
@@ -110,7 +112,9 @@ pub trait SocketUtils {
     }
 
     async fn send_message(&mut self, message: crate::msg::Message) -> SendStatus {
-        if crate::conf::SOCK_DBG{println!("Sent:\n{:#?}", message);}
+        if crate::conf::SOCK_DBG {
+            println!("Sent:\n{:#?}", message);
+        }
         let socket = self.get_sock();
         let serialized_msg_res = crate::seri::serialize(&message);
         match serialized_msg_res {

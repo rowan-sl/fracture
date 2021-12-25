@@ -1,6 +1,6 @@
 [package]
 name = "client"
-version = "2.2.0-alpha"
+version = "3.0.0-alpha"
 edition = "2021"
 publish = false
 
