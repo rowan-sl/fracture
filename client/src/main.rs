@@ -3,12 +3,18 @@ mod conf;
 mod handlers;
 mod types;
 
+use std::thread;
+use std::sync::mpsc::{channel as std_channel, Receiver as StdReceiver, Sender as StdSender};
+
+use clap::{App, Arg};
+
 use tokio::io;
 use tokio::join;
 use tokio::net::TcpStream;
 use tokio::sync::broadcast::{channel, Receiver, Sender};
 use tokio::task;
 use tokio::task::JoinHandle;
+use tokio::runtime::Builder;
 
 use api::msg;
 use api::stat;
@@ -18,18 +24,60 @@ use client::Client;
 use handlers::get_default_handlers;
 use types::{stati, ShutdownMessage};
 
-#[tokio::main]
-async fn main() {
+
+#[derive(Debug)]
+enum CommMessage {
+    ConnectionFailed,
+    ConnectionRefused,
+    CTRLCExit,
+}
+
+struct TaskCloseMsg;
+
+fn main() {
+    let (comm_incoming_send, comm_incoming_recv) = std_channel::<CommMessage>();
+    let (comm_outgoing_send, comm_outgoing_recv) = std_channel::<CommMessage>();
+    let (shutdown_send, shutdown_recv) = std_channel::<TaskCloseMsg>();
+
+    let comm_res = thread::spawn(move || {
+        let comm_ctx = Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        comm_ctx.block_on(comm_main(comm_incoming_send, comm_outgoing_recv));
+    });
+
+    let printer = thread::spawn(move || {
+        loop {
+            if let Ok(_) = shutdown_recv.try_recv() {
+                break;
+            }
+            if let Ok(msg) = comm_incoming_recv.try_recv() {
+                println!("{:#?}", msg);
+            }
+        }
+    });
+
+    comm_res.join().unwrap();
+    shutdown_send.send(TaskCloseMsg).unwrap();
+    printer.join().unwrap();
+}
+
+async fn comm_main(comm_send: StdSender<CommMessage>, comm_rcvr: StdReceiver<CommMessage>) {
     let stream = match TcpStream::connect(conf::ADDR).await {
         Ok(st) => st,
         Err(err) => {
             use std::io::ErrorKind::ConnectionRefused;
+            let return_val: CommMessage;
             if let ConnectionRefused = err.kind() {
                 eprintln!("Connection Refused! The server may not be online, or there may be a problem with the network. Error folows:\n{:#?}", err);
+                return_val = CommMessage::ConnectionRefused;
             } else {
                 eprintln!("Error while connecting:\n{:#?}", err);
+                return_val = CommMessage::ConnectionFailed;
             }
             eprintln!("Aborting!");
+            comm_send.send(return_val).unwrap();
             return;
         }
     };
@@ -40,6 +88,7 @@ async fn main() {
         get_main_task(shutdown_tx, stream),
         get_ctrlc_listener(ctrlc_transmitter)
     );
+    comm_send.send(CommMessage::CTRLCExit).unwrap();
 }
 
 fn get_main_task(shutdown_tx: Sender<ShutdownMessage>, stream: TcpStream) -> JoinHandle<()> {
