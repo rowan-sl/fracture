@@ -6,7 +6,6 @@ mod types;
 use std::thread;
 use std::sync::mpsc::{channel as std_channel, Receiver as StdReceiver, Sender as StdSender};
 
-use clap::{App, Arg};
 
 use tokio::io;
 use tokio::join;
