@@ -1,10 +1,10 @@
 pub mod stati {
-    use api::msg;
+    use fracture_core::msg;
 
     #[derive(Debug)]
     pub enum MultiSendStatus {
         Worked { amnt: u32, bytes: u128 },
-        Failure(api::stat::SendStatus),
+        Failure(fracture_core::stat::SendStatus),
         NoTask,
     }
 
@@ -20,23 +20,23 @@ pub mod stati {
 
     #[derive(Debug)]
     pub struct ReadMessageStatus {
-        pub msg: api::msg::Message,
+        pub msg: fracture_core::msg::Message,
         pub bytes: usize,
     }
 
     pub enum UpdateReadStatus {
         ServerClosed {
-            reason: api::msg::types::ServerDisconnectReason,
+            reason: fracture_core::msg::types::ServerDisconnectReason,
             close_message: String,
         },
         ServerDisconnect,
-        ReadError(api::stat::ReadMessageError),
+        ReadError(fracture_core::stat::ReadMessageError),
         Success,
     }
 
     pub enum UpdateStatus {
         Unexpected(msg::Message),
-        SendError(api::stat::SendStatus),
+        SendError(fracture_core::stat::SendStatus),
         Success,
         Unhandled(msg::Message),
         ConnectionRefused,
@@ -56,7 +56,7 @@ pub enum HandlerOperation {
     #[allow(dead_code)]
     InterfaceOperation(InterfaceOperation),
     ServerMsg {
-        msg: api::msg::Message,
+        msg: fracture_core::msg::Message,
     },
 }
 

@@ -5,10 +5,10 @@ use tokio::io::AsyncWriteExt;
 use tokio::net::TcpStream;
 use uuid::Uuid;
 
-use api::handler::MessageHandler;
-use api::msg;
-use api::stat::SendStatus;
-use api::SocketUtils;
+use fracture_core::handler::MessageHandler;
+use fracture_core::msg;
+use fracture_core::stat::SendStatus;
+use fracture_core::SocketUtils;
 
 use crate::conf;
 use crate::types::{stati, ClientState, HandlerOperation, ServerInfo};
@@ -62,8 +62,8 @@ impl Client {
             }
             stati::CloseType::Graceful => {
                 match self
-                    .send_message(api::msg::Message {
-                        data: api::msg::MessageVarient::DisconnectMessage {},
+                    .send_message(fracture_core::msg::Message {
+                        data: fracture_core::msg::MessageVarient::DisconnectMessage {},
                     })
                     .await
                 {
@@ -153,7 +153,7 @@ impl Client {
             }
         } else if let Err(err) = read {
             match err {
-                api::stat::ReadMessageError::Disconnected => {
+                fracture_core::stat::ReadMessageError::Disconnected => {
                     stati::UpdateReadStatus::ServerDisconnect
                 }
                 oerr => stati::UpdateReadStatus::ReadError(oerr),
@@ -171,10 +171,10 @@ impl Client {
             Begin => {
                 // send message to server about the client
                 match self
-                    .send_message(api::common::gen_connect(String::from(conf::NAME)))
+                    .send_message(fracture_core::common::gen_connect(String::from(conf::NAME)))
                     .await
                 {
-                    api::stat::SendStatus::Sent(_) => {}
+                    fracture_core::stat::SendStatus::Sent(_) => {}
                     err => {
                         eprintln!("Failed to send connect message:\n{:#?}", err);
                         return stati::UpdateStatus::SendError(err);
@@ -189,7 +189,7 @@ impl Client {
                 match next {
                     Ok(msg) => {
                         match msg.data {
-                            api::msg::MessageVarient::ServerInfo {
+                            fracture_core::msg::MessageVarient::ServerInfo {
                                 server_name,
                                 conn_status,
                                 connected_users: _, //TODO stop ignoring the servers lies, prehaps when it stops lying

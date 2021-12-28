@@ -12,20 +12,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "api"
-version = "4.0.0-alpha"
-dependencies = [
- "async-trait",
- "bincode",
- "bytes",
- "parking_lot",
- "queues",
- "serde",
- "tokio",
- "uuid",
-]
-
-[[package]]
 name = "async-trait"
 version = "0.1.52"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -90,13 +76,41 @@ dependencies = [
 ]
 
 [[package]]
-name = "client"
+name = "fracture-client"
 version = "3.1.0-alpha"
 dependencies = [
- "api",
  "bincode",
  "bytes",
  "clap",
+ "fracture-core",
+ "parking_lot",
+ "queues",
+ "serde",
+ "tokio",
+ "uuid",
+]
+
+[[package]]
+name = "fracture-core"
+version = "4.0.0-alpha"
+dependencies = [
+ "async-trait",
+ "bincode",
+ "bytes",
+ "parking_lot",
+ "queues",
+ "serde",
+ "tokio",
+ "uuid",
+]
+
+[[package]]
+name = "fracture-server"
+version = "3.1.0-alpha"
+dependencies = [
+ "bincode",
+ "bytes",
+ "fracture-core",
  "parking_lot",
  "queues",
  "serde",
@@ -298,20 +312,6 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn",
-]
-
-[[package]]
-name = "server"
-version = "3.1.0-alpha"
-dependencies = [
- "api",
- "bincode",
- "bytes",
- "parking_lot",
- "queues",
- "serde",
- "tokio",
- "uuid",
 ]
 
 [[package]]

@@ -4,7 +4,7 @@ mod handlers;
 mod types;
 
 use std::thread;
-use std::sync::mpsc::{channel as std_channel, Receiver as StdReceiver, Sender as StdSender};
+use std::sync::mpsc::{channel as std_channel, Receiver as StdReceiver, Sender as StdSender, TryRecvError};
 
 
 use tokio::io;
@@ -15,9 +15,9 @@ use tokio::task;
 use tokio::task::JoinHandle;
 use tokio::runtime::Builder;
 
-use api::msg;
-use api::stat;
-use api::utils::wait_update_time;
+use fracture_core::msg;
+use fracture_core::stat;
+use fracture_core::utils::wait_update_time;
 
 use client::Client;
 use handlers::get_default_handlers;
@@ -35,7 +35,7 @@ struct TaskCloseMsg;
 
 fn main() {
     let (comm_incoming_send, comm_incoming_recv) = std_channel::<CommMessage>();
-    let (comm_outgoing_send, comm_outgoing_recv) = std_channel::<CommMessage>();
+    let (_comm_outgoing_send, comm_outgoing_recv) = std_channel::<CommMessage>();
     let (shutdown_send, shutdown_recv) = std_channel::<TaskCloseMsg>();
 
     let comm_res = thread::spawn(move || {
@@ -51,8 +51,15 @@ fn main() {
             if let Ok(_) = shutdown_recv.try_recv() {
                 break;
             }
-            if let Ok(msg) = comm_incoming_recv.try_recv() {
-                println!("{:#?}", msg);
+            match comm_incoming_recv.try_recv() {
+                Ok(msg) => {
+                    println!("{:#?}", msg);
+                }
+                Err(err) => {
+                    if let TryRecvError::Disconnected = err {
+                        break;
+                    }
+                }
             }
         }
     });
@@ -62,7 +69,7 @@ fn main() {
     printer.join().unwrap();
 }
 
-async fn comm_main(comm_send: StdSender<CommMessage>, comm_rcvr: StdReceiver<CommMessage>) {
+async fn comm_main(comm_send: StdSender<CommMessage>, _comm_rcvr: StdReceiver<CommMessage>) {
     let stream = match TcpStream::connect(conf::ADDR).await {
         Ok(st) => st,
         Err(err) => {

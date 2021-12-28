@@ -2,7 +2,7 @@ pub mod imports;
 pub mod modules;
 
 use crate::interface::core::HandlerOperation;
-use api::handler::MessageHandler;
+use fracture_core::handler::MessageHandler;
 
 /// Current handlers for the client
 pub fn get_default_handlers() -> Vec<Box<dyn MessageHandler<Operation = HandlerOperation> + Send>> {

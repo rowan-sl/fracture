@@ -1,5 +1,5 @@
 use crate::handlers::imports::{GlobalHandlerOperation, HandlerOperation, MessageHandler};
-use api::msg::MessageVarient::TestMessageResponse;
+use fracture_core::msg::MessageVarient::TestMessageResponse;
 
 pub struct TestHandler {
     pending: Vec<HandlerOperation>,
@@ -12,7 +12,7 @@ impl MessageHandler for TestHandler {
         Box::new(Self { pending: vec![] })
     }
 
-    fn handle(&mut self, msg: &api::msg::Message) -> bool {
+    fn handle(&mut self, msg: &fracture_core::msg::Message) -> bool {
         if let TestMessageResponse {} = msg.data {
             println!("Received test message response");
             return true;
@@ -38,8 +38,8 @@ impl MessageHandler for TestHandler {
 
     fn get_default_operations(&mut self) -> Vec<Self::Operation> {
         vec![HandlerOperation::ServerMsg {
-            msg: api::msg::Message {
-                data: api::msg::MessageVarient::TestMessage {},
+            msg: fracture_core::msg::Message {
+                data: fracture_core::msg::MessageVarient::TestMessage {},
             },
         }]
     }

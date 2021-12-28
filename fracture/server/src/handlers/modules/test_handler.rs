@@ -1,5 +1,5 @@
 use crate::handlers::imports::{GlobalHandlerOperation, HandlerOperation, MessageHandler};
-use api::msg::MessageVarient::TestMessage;
+use fracture_core::msg::MessageVarient::TestMessage;
 
 pub struct TestHandler {
     pending: Vec<HandlerOperation>,
@@ -16,12 +16,12 @@ impl MessageHandler for TestHandler {
         })
     }
 
-    fn handle(&mut self, msg: &api::msg::Message) -> bool {
+    fn handle(&mut self, msg: &fracture_core::msg::Message) -> bool {
         if let TestMessage {} = msg.data {
             println!("Received test message");
             self.pending_global.push(GlobalHandlerOperation::MsgAll {
-                msg: api::msg::Message {
-                    data: api::msg::MessageVarient::TestMessageResponse {},
+                msg: fracture_core::msg::Message {
+                    data: fracture_core::msg::MessageVarient::TestMessageResponse {},
                 },
             });
             return true;
@@ -31,6 +31,7 @@ impl MessageHandler for TestHandler {
     }
 
     fn handle_global_op(&mut self, op: &GlobalHandlerOperation) {
+        #[allow(irrefutable_let_patterns)]//not a issue, will fix itself later
         if let GlobalHandlerOperation::MsgAll {msg} = op {
             self.pending.push(
                 HandlerOperation::Client {

@@ -10,14 +10,14 @@ use tokio::net::TcpStream;
 use tokio::sync::broadcast;
 use tokio::sync::broadcast::error::TryRecvError;
 
-use api::handler::MessageHandler;
-use api::handler::GlobalHandlerOperation;
-use api::msg;
-use api::stat;
-use api::SocketUtils;
+use fracture_core::handler::MessageHandler;
+use fracture_core::handler::GlobalHandlerOperation;
+use fracture_core::msg;
+use fracture_core::stat;
+use fracture_core::SocketUtils;
 
 pub mod stati {
-    use api::stat;
+    use fracture_core::stat;
     pub enum MultiSendStatus {
         Worked { amnt: u32, bytes: u128 },
         Failure(stat::SendStatus),
@@ -30,10 +30,10 @@ pub mod stati {
         Noop,
         ClientKicked(String),
         #[allow(dead_code)]
-        Unexpected(api::msg::Message),
+        Unexpected(fracture_core::msg::Message),
         #[allow(dead_code)]
-        SendError(api::stat::SendStatus),
-        Unhandled(api::msg::Message),
+        SendError(fracture_core::stat::SendStatus),
+        Unhandled(fracture_core::msg::Message),
     }
 
     #[derive(Debug)]
@@ -66,8 +66,8 @@ pub enum InterfaceState {
 }
 
 pub struct ClientInterface {
-    to_send: Queue<api::msg::Message>,
-    incoming: Queue<api::msg::Message>,
+    to_send: Queue<fracture_core::msg::Message>,
+    incoming: Queue<fracture_core::msg::Message>,
     /// what state the interface is in (like waiting for the client to send connection/auth stuff)
     state: InterfaceState,
     /// Handlers for messages, to be asked to handle new incoming messages
@@ -123,14 +123,14 @@ impl ClientInterface {
     pub async fn close(
         &mut self,
         disconn_msg: String,
-        pos_reason: Option<api::msg::types::ServerDisconnectReason>,
+        pos_reason: Option<fracture_core::msg::types::ServerDisconnectReason>,
     ) {
         //TODO make it send a shutdown message and clear queue and stuff
         if let Some(reason) = pos_reason {
             // only send queued messages if it isnt alredy shutdown (or at least know it is)
             match self
-                .send_message(api::msg::Message {
-                    data: api::msg::MessageVarient::ServerForceDisconnect {
+                .send_message(fracture_core::msg::Message {
+                    data: fracture_core::msg::MessageVarient::ServerForceDisconnect {
                         reason,
                         close_message: disconn_msg,
                     },
@@ -231,8 +231,8 @@ impl ClientInterface {
     /// Returns the value as if .add(msg) had been called on the msg queue.
     pub fn queue_message(
         &mut self,
-        msg: api::msg::Message,
-    ) -> Result<Option<api::msg::Message>, &str> {
+        msg: fracture_core::msg::Message,
+    ) -> Result<Option<fracture_core::msg::Message>, &str> {
         self.to_send.add(msg)
     }
 
@@ -240,7 +240,7 @@ impl ClientInterface {
     /// returns if the message was handled or not
     pub async fn update(&mut self) -> stati::UpdateStatus {
         // The ping message should always be a valid thing to send/rcv
-        use api::msg::{types, Message, MessageVarient};
+        use fracture_core::msg::{types, Message, MessageVarient};
         if let Ok(msg) = self.incoming.peek() {
             if let MessageVarient::Ping = msg.data {
                 self.incoming.remove().unwrap();
@@ -349,6 +349,7 @@ impl ClientInterface {
                     self.queue_message(msg).unwrap();
                     return Ok(None);
                 }
+                #[allow(unreachable_patterns)]//this is fine, it will fix itself later
                 _ => Err(Some(op)),
             },
             Err(_) => Err(None),

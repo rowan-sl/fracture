@@ -1,5 +1,5 @@
 [package]
-name = "api"
+name = "fracture-core"
 version = "4.0.0-alpha"
 edition = "2021"
 publish = false

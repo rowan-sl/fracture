@@ -2,9 +2,9 @@ use tokio::net::TcpStream;
 use tokio::sync::broadcast::{Sender};
 use tokio::task;
 
-use api::stat;
-use api::utils::wait_update_time;
-use api::handler::GlobalHandlerOperation;
+use fracture_core::stat;
+use fracture_core::utils::wait_update_time;
+use fracture_core::handler::GlobalHandlerOperation;
 
 use crate::conf::NAME;
 use crate::handlers::get_default_handlers;
@@ -62,7 +62,7 @@ pub async fn handle_client(
                         },
                         stati::UpdateReadStatus::GracefullDisconnect => {
                             println!("{:?} gracefully disconnected", addr);
-                            interface.close(String::from(""), Some(api::msg::types::ServerDisconnectReason::ClientRequestedDisconnect)).await;
+                            interface.close(String::from(""), Some(fracture_core::msg::types::ServerDisconnectReason::ClientRequestedDisconnect)).await;
                             break;
                         },
                         stati::UpdateReadStatus::Sucsess => {}
@@ -73,7 +73,7 @@ pub async fn handle_client(
                         stati::UpdateStatus::ClientKicked (reason) => {
                             //TODO this should actualy never happen, so remove it or implement it
                             eprintln!("Kicked client for invalid connection!");
-                            interface.close(reason, Some(api::msg::types::ServerDisconnectReason::InvalidConnectionSequence)).await;
+                            interface.close(reason, Some(fracture_core::msg::types::ServerDisconnectReason::InvalidConnectionSequence)).await;
                             break;
                         }
                         stati::UpdateStatus::Unexpected (msg) => {

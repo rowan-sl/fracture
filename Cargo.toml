@@ -1,6 +1,6 @@
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 [workspace]
-members = ["server", "client", "api"]
+members = ["fracture/server", "fracture/client", "fracture/core"]
 
 [profile.release]
-lto = "fat" # hello long compile times
+lto = "fat" # hello long compile times, hello google fi, the phone plan that can
