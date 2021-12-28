@@ -77,7 +77,7 @@ dependencies = [
 
 [[package]]
 name = "fracture-client"
-version = "3.1.0-alpha"
+version = "1.0.0"
 dependencies = [
  "bincode",
  "bytes",
@@ -92,7 +92,7 @@ dependencies = [
 
 [[package]]
 name = "fracture-core"
-version = "4.0.0-alpha"
+version = "2.0.1"
 dependencies = [
  "async-trait",
  "bincode",
@@ -106,7 +106,7 @@ dependencies = [
 
 [[package]]
 name = "fracture-server"
-version = "3.1.0-alpha"
+version = "1.0.0"
 dependencies = [
  "bincode",
  "bytes",
