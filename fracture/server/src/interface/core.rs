@@ -304,11 +304,11 @@ impl ClientInterface {
                             break;
                         }
                     }
-                    if handeld {
-                        return stati::UpdateStatus::Sucsess;
+                    return if handeld {
+                        stati::UpdateStatus::Sucsess
                     } else {
-                        return stati::UpdateStatus::Unhandled(msg);
-                    }
+                        stati::UpdateStatus::Unhandled(msg)
+                    };
                 }
             }
         };
@@ -347,7 +347,7 @@ impl ClientInterface {
             Ok(op) => match op {
                 HandlerOperation::Client { msg } => {
                     self.queue_message(msg).unwrap();
-                    return Ok(None);
+                    Ok(None)
                 }
                 #[allow(unreachable_patterns)]//this is fine, it will fix itself later
                 _ => Err(Some(op)),

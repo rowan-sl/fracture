@@ -24,9 +24,9 @@ impl MessageHandler for TestHandler {
                     data: fracture_core::msg::MessageVarient::TestMessageResponse {},
                 },
             });
-            return true;
+            true
         } else {
-            return false;
+            false
         }
     }
 
@@ -42,22 +42,22 @@ impl MessageHandler for TestHandler {
     }
 
     fn get_global_operations(&mut self) -> Option<Vec<GlobalHandlerOperation>> {
-        if self.pending_global.len() == 0 {
-            return None;
+        if self.pending_global.is_empty() {
+            None
         } else {
             let res = Some(self.pending_global.clone());
             self.pending_global.clear();
-            return res;
+            res
         }
     }
 
     fn get_operations(&mut self) -> Option<Vec<Self::Operation>> {
-        if self.pending.len() == 0 {
-            return None;
+        if self.pending.is_empty() {
+            None
         } else {
             let res = Some(self.pending.clone());
             self.pending.clear();
-            return res;
+            res
         }
     }
 

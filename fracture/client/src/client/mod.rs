@@ -281,7 +281,7 @@ impl Client {
                     HandlerOperation::InterfaceOperation(_inter_op) => Ok(Some(op)),
                     HandlerOperation::ServerMsg { msg } => {
                         self.queue_msg(msg);
-                        return Ok(None);
+                        Ok(None)
                     }
                     #[allow(unreachable_patterns)] // this is a GOOD thing
                     _ => Err(Some(op)),

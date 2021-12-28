@@ -7,7 +7,7 @@ use fracture_core::utils::wait_update_time;
 use fracture_core::handler::GlobalHandlerOperation;
 
 use crate::conf::NAME;
-use crate::handlers::get_default_handlers;
+use crate::handlers::get_default;
 use crate::interface::core::{stati, ClientInterface};
 
 #[derive(Clone, Debug)]
@@ -24,7 +24,7 @@ pub async fn handle_client(
     let mut client_shutdown_channel = shutdown_sender.subscribe(); //make shure to like and
     tokio::spawn(async move {
         let mut interface =
-            ClientInterface::new(socket, String::from(NAME), get_default_handlers(), global_handler_channel);
+            ClientInterface::new(socket, String::from(NAME), get_default(), global_handler_channel);
         println!(
             "Connected to {:?}, reported ip {:?}",
             addr,

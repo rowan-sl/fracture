@@ -15,9 +15,9 @@ impl MessageHandler for TestHandler {
     fn handle(&mut self, msg: &fracture_core::msg::Message) -> bool {
         if let TestMessageResponse {} = msg.data {
             println!("Received test message response");
-            return true;
+            true
         } else {
-            return false;
+            false
         }
     }
 
@@ -27,12 +27,12 @@ impl MessageHandler for TestHandler {
     }
 
     fn get_operations(&mut self) -> Option<Vec<Self::Operation>> {
-        if self.pending.len() == 0 {
-            return None;
+        if self.pending.is_empty() {
+            None
         } else {
             let res = Some(self.pending.clone());
             self.pending.clear();
-            return res;
+            res
         }
     }
 

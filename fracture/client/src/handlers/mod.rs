@@ -1,9 +1,9 @@
 pub mod imports;
 pub mod modules;
 
-use imports::*;
+use imports::{HandlerOperation, MessageHandler};
 
 /// Current handlers for the client
-pub fn get_default_handlers() -> Vec<Box<dyn MessageHandler<Operation = HandlerOperation> + Send>> {
+pub fn get_default() -> Vec<Box<dyn MessageHandler<Operation = HandlerOperation> + Send>> {
     vec![modules::test_handler::TestHandler::new()]
 }

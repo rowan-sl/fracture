@@ -20,7 +20,7 @@ use fracture_core::stat;
 use fracture_core::utils::wait_update_time;
 
 use client::Client;
-use handlers::get_default_handlers;
+use handlers::get_default;
 use types::{stati, ShutdownMessage};
 
 
@@ -48,7 +48,7 @@ fn main() {
 
     let printer = thread::spawn(move || {
         loop {
-            if let Ok(_) = shutdown_recv.try_recv() {
+            if shutdown_recv.try_recv().is_ok() {
                 break;
             }
             match comm_incoming_recv.try_recv() {
@@ -56,7 +56,7 @@ fn main() {
                     println!("{:#?}", msg);
                 }
                 Err(err) => {
-                    if let TryRecvError::Disconnected = err {
+                    if err == TryRecvError::Disconnected {
                         break;
                     }
                 }
@@ -74,14 +74,15 @@ async fn comm_main(comm_send: StdSender<CommMessage>, _comm_rcvr: StdReceiver<Co
         Ok(st) => st,
         Err(err) => {
             use std::io::ErrorKind::ConnectionRefused;
-            let return_val: CommMessage;
-            if let ConnectionRefused = err.kind() {
+
+            let return_val =
+            if err.kind() == ConnectionRefused {
                 eprintln!("Connection Refused! The server may not be online, or there may be a problem with the network. Error folows:\n{:#?}", err);
-                return_val = CommMessage::ConnectionRefused;
+                CommMessage::ConnectionRefused
             } else {
                 eprintln!("Error while connecting:\n{:#?}", err);
-                return_val = CommMessage::ConnectionFailed;
-            }
+                CommMessage::ConnectionFailed
+            };
             eprintln!("Aborting!");
             comm_send.send(return_val).unwrap();
             return;
@@ -100,7 +101,7 @@ async fn comm_main(comm_send: StdSender<CommMessage>, _comm_rcvr: StdReceiver<Co
 fn get_main_task(shutdown_tx: Sender<ShutdownMessage>, stream: TcpStream) -> JoinHandle<()> {
     tokio::spawn(async move {
         let mut close_rcv = shutdown_tx.subscribe();
-        let mut client = Client::new(stream, get_default_handlers());
+        let mut client = Client::new(stream, get_default());
         loop {
             tokio::select! {
                 stat = client.update_read() => {
