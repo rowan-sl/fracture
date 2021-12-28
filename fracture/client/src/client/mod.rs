@@ -10,10 +10,10 @@ use fracture_core::msg;
 use fracture_core::stat::SendStatus;
 use fracture_core::SocketUtils;
 
-use crate::conf;
 use crate::types::{stati, ClientState, HandlerOperation, ServerInfo};
 
 pub struct Client {
+    name: String,//the name of the client
     sock: TcpStream,
     pub incoming: Queue<msg::Message>,
     outgoing: Queue<msg::Message>,
@@ -27,6 +27,7 @@ pub struct Client {
 impl Client {
     pub fn new(
         sock: TcpStream,
+        name: String,
         handlers: Vec<Box<dyn MessageHandler<Operation = HandlerOperation> + Send>>,
     ) -> Self {
         Self {
@@ -35,6 +36,7 @@ impl Client {
             outgoing: queue![],
             pending_op: queue![],
             handlers,
+            name,
             server_info: None,
             state: ClientState::Begin,
         }
@@ -171,7 +173,7 @@ impl Client {
             Begin => {
                 // send message to server about the client
                 match self
-                    .send_message(fracture_core::common::gen_connect(String::from(conf::NAME)))
+                    .send_message(fracture_core::common::gen_connect(self.name.clone()))
                     .await
                 {
                     fracture_core::stat::SendStatus::Sent(_) => {}

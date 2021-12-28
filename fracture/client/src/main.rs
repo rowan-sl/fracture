@@ -1,11 +1,10 @@
 mod client;
-mod conf;
 mod handlers;
 mod types;
+mod args;
 
 use std::thread;
 use std::sync::mpsc::{channel as std_channel, Receiver as StdReceiver, Sender as StdSender, TryRecvError};
-
 
 use tokio::io;
 use tokio::join;
@@ -22,7 +21,7 @@ use fracture_core::utils::wait_update_time;
 use client::Client;
 use handlers::get_default;
 use types::{stati, ShutdownMessage};
-
+use args::get_args;
 
 #[derive(Debug)]
 enum CommMessage {
@@ -31,32 +30,31 @@ enum CommMessage {
     CTRLCExit,
 }
 
-struct TaskCloseMsg;
+fn main() -> Result<(),()> {
+    let args = get_args()?;
 
-fn main() {
+    println!("Connecting to: {:?} as {}", args.addr, args.name);
+
     let (comm_incoming_send, comm_incoming_recv) = std_channel::<CommMessage>();
     let (_comm_outgoing_send, comm_outgoing_recv) = std_channel::<CommMessage>();
-    let (shutdown_send, shutdown_recv) = std_channel::<TaskCloseMsg>();
 
     let comm_res = thread::spawn(move || {
         let comm_ctx = Builder::new_current_thread()
             .enable_all()
             .build()
             .unwrap();
-        comm_ctx.block_on(comm_main(comm_incoming_send, comm_outgoing_recv));
+        comm_ctx.block_on(comm_main(comm_incoming_send, comm_outgoing_recv, args.addr, args.name));
     });
 
     let printer = thread::spawn(move || {
         loop {
-            if shutdown_recv.try_recv().is_ok() {
-                break;
-            }
             match comm_incoming_recv.try_recv() {
                 Ok(msg) => {
                     println!("{:#?}", msg);
                 }
                 Err(err) => {
                     if err == TryRecvError::Disconnected {
+                        // fun trick here, when the client closes, the sender is dropped, and it will automatically close
                         break;
                     }
                 }
@@ -65,12 +63,12 @@ fn main() {
     });
 
     comm_res.join().unwrap();
-    shutdown_send.send(TaskCloseMsg).unwrap();
     printer.join().unwrap();
+    Ok(())
 }
 
-async fn comm_main(comm_send: StdSender<CommMessage>, _comm_rcvr: StdReceiver<CommMessage>) {
-    let stream = match TcpStream::connect(conf::ADDR).await {
+async fn comm_main(comm_send: StdSender<CommMessage>, _comm_rcvr: StdReceiver<CommMessage>, addr: std::net::SocketAddrV4, name: String) {
+    let stream = match TcpStream::connect(addr).await {
         Ok(st) => st,
         Err(err) => {
             use std::io::ErrorKind::ConnectionRefused;
@@ -92,16 +90,17 @@ async fn comm_main(comm_send: StdSender<CommMessage>, _comm_rcvr: StdReceiver<Co
     let ctrlc_transmitter = shutdown_tx.clone();
 
     let _task_results = join!(
-        get_main_task(shutdown_tx, stream),
+        get_main_task(shutdown_tx, stream, name),
         get_ctrlc_listener(ctrlc_transmitter)
     );
     comm_send.send(CommMessage::CTRLCExit).unwrap();
+    println!("Exited")
 }
 
-fn get_main_task(shutdown_tx: Sender<ShutdownMessage>, stream: TcpStream) -> JoinHandle<()> {
+fn get_main_task(shutdown_tx: Sender<ShutdownMessage>, stream: TcpStream, name: String) -> JoinHandle<()> {
     tokio::spawn(async move {
         let mut close_rcv = shutdown_tx.subscribe();
-        let mut client = Client::new(stream, get_default());
+        let mut client = Client::new(stream, name, get_default());
         loop {
             tokio::select! {
                 stat = client.update_read() => {
@@ -194,12 +193,12 @@ fn get_main_task(shutdown_tx: Sender<ShutdownMessage>, stream: TcpStream) -> Joi
                             stat::SendStatus::SeriError (err) => {
                                 panic!("Could not serialize msessage:\n{:#?}", err);
                             }
-                            _ => {panic!()}//this should not happen
+                            _ => {unreachable!()}//this should not happen
                         }
                     }
                 }
                 _ = close_rcv.recv() => {
-                    println!("Disconnecting from {:?}", conf::ADDR);
+                    println!("Disconnecting");
                     client.close(stati::CloseType::Graceful).await;
                     break;
                 }
