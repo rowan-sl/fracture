@@ -39,9 +39,9 @@ fn get_client_listener(
         // TODO make address configurable
         let listener = TcpListener::bind(ADDR).await?;
         println!(
-            "Started listening on {}, join this server with code {}",
+            "Started listening on {:?}, join this server with code {:?}",
             ADDR,
-            ipencoding::ip_to_code(ADDR.parse::<std::net::SocketAddrV4>().unwrap())
+            ipencoding::ip_to_code(ADDR.parse::<std::net::SocketAddrV4>().unwrap()).unwrap()
         );
         let mut tasks: Vec<task::JoinHandle<()>> = vec![];
 
