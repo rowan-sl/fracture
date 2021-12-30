@@ -8,6 +8,7 @@ publish = false
 
 [dependencies]
 fracture-core = { path = "../core" }
+iced = { version = "0.3", features = ["image", "tokio"] }
 tokio = { version = "1", features = ["sync", "rt-multi-thread", "signal", "net", "rt", "macros"] }
 serde = { version = "1", features = ["derive"] }
 bincode = "1.3.3"

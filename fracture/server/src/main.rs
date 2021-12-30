@@ -4,8 +4,8 @@ mod interface;
 
 use tokio::{io, net::TcpListener, sync::broadcast, task};
 
-use fracture_core::utils::ipencoding;
 use fracture_core::handler::GlobalHandlerOperation;
+use fracture_core::utils::ipencoding;
 
 use conf::ADDR;
 use interface::{handler::handle_client, handler::ShutdownMessage};

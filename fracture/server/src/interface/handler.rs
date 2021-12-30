@@ -1,10 +1,10 @@
 use tokio::net::TcpStream;
-use tokio::sync::broadcast::{Sender};
+use tokio::sync::broadcast::Sender;
 use tokio::task;
 
+use fracture_core::handler::GlobalHandlerOperation;
 use fracture_core::stat;
 use fracture_core::utils::wait_update_time;
-use fracture_core::handler::GlobalHandlerOperation;
 
 use crate::conf::NAME;
 use crate::handlers::get_default;
@@ -23,8 +23,12 @@ pub async fn handle_client(
 ) -> task::JoinHandle<()> {
     let mut client_shutdown_channel = shutdown_sender.subscribe(); //make shure to like and
     tokio::spawn(async move {
-        let mut interface =
-            ClientInterface::new(socket, String::from(NAME), get_default(), global_handler_channel);
+        let mut interface = ClientInterface::new(
+            socket,
+            String::from(NAME),
+            get_default(),
+            global_handler_channel,
+        );
         println!(
             "Connected to {:?}, reported ip {:?}",
             addr,

@@ -13,7 +13,7 @@ use fracture_core::SocketUtils;
 use crate::types::{stati, ClientState, HandlerOperation, ServerInfo};
 
 pub struct Client {
-    name: String,//the name of the client
+    name: String, //the name of the client
     sock: TcpStream,
     pub incoming: Queue<msg::Message>,
     outgoing: Queue<msg::Message>,

@@ -1,27 +1,34 @@
+mod args;
 mod client;
 mod handlers;
 mod types;
-mod args;
 
+use std::sync::mpsc::{
+    channel as std_channel, Receiver as StdReceiver, Sender as StdSender, TryRecvError,
+};
 use std::thread;
-use std::sync::mpsc::{channel as std_channel, Receiver as StdReceiver, Sender as StdSender, TryRecvError};
 
 use tokio::io;
 use tokio::join;
 use tokio::net::TcpStream;
+use tokio::runtime::Builder;
 use tokio::sync::broadcast::{channel, Receiver, Sender};
 use tokio::task;
 use tokio::task::JoinHandle;
-use tokio::runtime::Builder;
+
+use iced::{
+    button, executor, image, scrollable, text_input, Align, Application, Button, Clipboard, Column,
+    Command, Element, Length, Row, Scrollable, Settings, Space, Text, TextInput,
+};
 
 use fracture_core::msg;
 use fracture_core::stat;
 use fracture_core::utils::wait_update_time;
 
+use args::get_args;
 use client::Client;
 use handlers::get_default;
 use types::{stati, ShutdownMessage};
-use args::get_args;
 
 #[derive(Debug)]
 enum CommMessage {
@@ -30,7 +37,7 @@ enum CommMessage {
     CTRLCExit,
 }
 
-fn main() -> Result<(),()> {
+fn main() -> Result<(), ()> {
     let args = get_args()?;
 
     println!("Connecting to: {:?} as {}", args.addr, args.name);
@@ -39,11 +46,13 @@ fn main() -> Result<(),()> {
     let (_comm_outgoing_send, comm_outgoing_recv) = std_channel::<CommMessage>();
 
     let comm_res = thread::spawn(move || {
-        let comm_ctx = Builder::new_current_thread()
-            .enable_all()
-            .build()
-            .unwrap();
-        comm_ctx.block_on(comm_main(comm_incoming_send, comm_outgoing_recv, args.addr, args.name));
+        let comm_ctx = Builder::new_current_thread().enable_all().build().unwrap();
+        comm_ctx.block_on(comm_main(
+            comm_incoming_send,
+            comm_outgoing_recv,
+            args.addr,
+            args.name,
+        ));
     });
 
     let printer = thread::spawn(move || {
@@ -67,14 +76,18 @@ fn main() -> Result<(),()> {
     Ok(())
 }
 
-async fn comm_main(comm_send: StdSender<CommMessage>, _comm_rcvr: StdReceiver<CommMessage>, addr: std::net::SocketAddrV4, name: String) {
+async fn comm_main(
+    comm_send: StdSender<CommMessage>,
+    _comm_rcvr: StdReceiver<CommMessage>,
+    addr: std::net::SocketAddrV4,
+    name: String,
+) {
     let stream = match TcpStream::connect(addr).await {
         Ok(st) => st,
         Err(err) => {
             use std::io::ErrorKind::ConnectionRefused;
 
-            let return_val =
-            if err.kind() == ConnectionRefused {
+            let return_val = if err.kind() == ConnectionRefused {
                 eprintln!("Connection Refused! The server may not be online, or there may be a problem with the network. Error folows:\n{:#?}", err);
                 CommMessage::ConnectionRefused
             } else {
@@ -97,7 +110,11 @@ async fn comm_main(comm_send: StdSender<CommMessage>, _comm_rcvr: StdReceiver<Co
     println!("Exited")
 }
 
-fn get_main_task(shutdown_tx: Sender<ShutdownMessage>, stream: TcpStream, name: String) -> JoinHandle<()> {
+fn get_main_task(
+    shutdown_tx: Sender<ShutdownMessage>,
+    stream: TcpStream,
+    name: String,
+) -> JoinHandle<()> {
     tokio::spawn(async move {
         let mut close_rcv = shutdown_tx.subscribe();
         let mut client = Client::new(stream, name, get_default());

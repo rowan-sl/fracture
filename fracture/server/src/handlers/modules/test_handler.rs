@@ -31,13 +31,10 @@ impl MessageHandler for TestHandler {
     }
 
     fn handle_global_op(&mut self, op: &GlobalHandlerOperation) {
-        #[allow(irrefutable_let_patterns)]//not a issue, will fix itself later
-        if let GlobalHandlerOperation::MsgAll {msg} = op {
-            self.pending.push(
-                HandlerOperation::Client {
-                    msg: msg.clone()
-                }
-            );
+        #[allow(irrefutable_let_patterns)] //not a issue, will fix itself later
+        if let GlobalHandlerOperation::MsgAll { msg } = op {
+            self.pending
+                .push(HandlerOperation::Client { msg: msg.clone() });
         }
     }
 

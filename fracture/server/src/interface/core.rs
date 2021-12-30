@@ -10,8 +10,8 @@ use tokio::net::TcpStream;
 use tokio::sync::broadcast;
 use tokio::sync::broadcast::error::TryRecvError;
 
-use fracture_core::handler::MessageHandler;
 use fracture_core::handler::GlobalHandlerOperation;
+use fracture_core::handler::MessageHandler;
 use fracture_core::msg;
 use fracture_core::stat;
 use fracture_core::SocketUtils;
@@ -349,7 +349,7 @@ impl ClientInterface {
                     self.queue_message(msg).unwrap();
                     Ok(None)
                 }
-                #[allow(unreachable_patterns)]//this is fine, it will fix itself later
+                #[allow(unreachable_patterns)] //this is fine, it will fix itself later
                 _ => Err(Some(op)),
             },
             Err(_) => Err(None),
@@ -379,19 +379,15 @@ impl ClientInterface {
                 Ok(op) => {
                     self.pending_global_ops.add(op).unwrap();
                 }
-                Err(err) => {
-                    match err {
-                        TryRecvError::Closed => {
-                            panic!("No senders left! this should not happen");
-                        }
-                        TryRecvError::Lagged (amnt) => {
-                            panic!("Missed receiving {} global operations! if this continues, increase the max allowed ammount!", amnt);
-                        }
-                        TryRecvError::Empty => {
-                            break
-                        }
+                Err(err) => match err {
+                    TryRecvError::Closed => {
+                        panic!("No senders left! this should not happen");
                     }
-                }
+                    TryRecvError::Lagged(amnt) => {
+                        panic!("Missed receiving {} global operations! if this continues, increase the max allowed ammount!", amnt);
+                    }
+                    TryRecvError::Empty => break,
+                },
             }
         }
     }
