@@ -46,7 +46,7 @@ enum CommMessage {
 
 struct CommChannels {
     sending: MPSCSender<CommMessage>,
-    receiving: mpscwatcher::MPSCWatcherSubscription<CommMessage>,
+    receiving: iced_futures::Subscription<iced_native::Hasher, (iced_native::Event, iced_native::event::Status), GUIMessage>,
 }
 
 fn main() -> Result<(), ()> {
@@ -59,7 +59,7 @@ fn main() -> Result<(), ()> {
     let (comm_outgoing_send, comm_outgoing_recv) = std_channel::<CommMessage>();
     let mut gui_comm_channels = CommChannels {
         sending: comm_outgoing_send,
-        receiving: mpscwatcher::watch_dis(Uuid::new_v4().as_u128(), comm_incoming_recv),
+        receiving: mpscwatcher::watch(Uuid::new_v4().as_u128(), comm_incoming_recv).map(|out| {GUIMessage::ReceivedCommMessage(out)}),
     };
 
     let comm_res = thread::spawn(move || {
@@ -104,12 +104,6 @@ enum GUIMessage {
     ReceivedCommMessage(mpscwatcher::MPSCWatcherUpdate<CommMessage>)
 }
 
-impl From<mpscwatcher::MPSCWatcherUpdate<CommMessage>> for GUIMessage {
-    fn from(item: mpscwatcher::MPSCWatcherUpdate<CommMessage>) -> GUIMessage {
-        GUIMessage::ReceivedCommMessage (item)
-    }
-}
-
 struct FractureGUIFlags {
     comm: CommChannels,
 }
@@ -124,7 +118,8 @@ struct FractureClientGUI {
     send_button: button::State,
     msg_input: text_input::State,
     scroll_state: scrollable::State,
-    comm: CommChannels,
+    comm_sender: MPSCSender<CommMessage>,
+    subscriptions: Vec<Subscription<GUIMessage>>,
     messages: Vec<ChatMessage>,
     current_input: String,
 }
@@ -140,7 +135,8 @@ impl Application for FractureClientGUI {
                 send_button: button::State::new(),
                 msg_input: text_input::State::new(),
                 scroll_state: scrollable::State::new(),
-                comm: flags.comm,
+                comm_sender: flags.comm.sending,
+                subscriptions: vec![flags.comm.receiving],
                 messages: vec![],
                 current_input: String::new(),
             },
@@ -149,7 +145,7 @@ impl Application for FractureClientGUI {
     }
 
     fn subscription(&self) -> Subscription<Self::Message> {
-        self.comm.receiving
+        Subscription::batch(self.subscriptions)
     }
 
     fn title(&self) -> String {

@@ -7,7 +7,7 @@ use futures::stream::BoxStream;
 
 pub type MPSCWatcherSubscription<T> = iced::Subscription<MPSCWatcherUpdate<T>>;
 
-pub fn watch_dis<H: 'static + Hash + Copy + Send, MessageType: 'static + Sync + Send + Clone>
+pub fn watch<H: 'static + Hash + Copy + Send, MessageType: 'static + Sync + Send + Clone>
 (
     id: H,
     channel: Receiver<MessageType>
@@ -37,9 +37,6 @@ where
     type Output = MPSCWatcherUpdate<MessageType>;
 
     fn hash(&self, hasher: &mut HasherType) {
-        struct UniqueToThis;
-        std::any::TypeId::of::<UniqueToThis>().hash(hasher);
-
         self.id.hash(hasher);
     }
 
