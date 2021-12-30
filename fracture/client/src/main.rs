@@ -1,49 +1,66 @@
 mod args;
 mod client;
 mod handlers;
+mod mpscwatcher;
 mod types;
 
-use std::sync::mpsc::{
-    channel as std_channel, Receiver as StdReceiver, Sender as StdSender, TryRecvError,
-};
-use std::thread;
+mod imports {
+    use super::*;
+    pub use std::sync::mpsc::{
+        channel as std_channel, Receiver as MPSCReceiver, Sender as MPSCSender, TryRecvError,
+    };
+    pub use std::thread;
 
-use tokio::io;
-use tokio::join;
-use tokio::net::TcpStream;
-use tokio::runtime::Builder;
-use tokio::sync::broadcast::{channel, Receiver, Sender};
-use tokio::task;
-use tokio::task::JoinHandle;
+    pub use tokio::io;
+    pub use tokio::join;
+    pub use tokio::net::TcpStream;
+    pub use tokio::runtime::Builder;
+    pub use tokio::sync::broadcast::{channel, Receiver, Sender};
+    pub use tokio::task;
+    pub use tokio::task::JoinHandle;
 
-use iced::{
-    button, executor, image, scrollable, text_input, Align, Application, Button, Clipboard, Column,
-    Command, Element, Length, Row, Scrollable, Settings, Space, Text, TextInput,
-};
+    pub use iced::{
+        button, executor, scrollable, text_input, Align, Application, Button, Clipboard, Column,
+        Command, Element, Length, Row, Scrollable, Settings, Space, Subscription, Text, TextInput,
+    };
 
-use fracture_core::msg;
-use fracture_core::stat;
-use fracture_core::utils::wait_update_time;
+    pub use uuid::Uuid;
 
-use args::get_args;
-use client::Client;
-use handlers::get_default;
-use types::{stati, ShutdownMessage};
+    pub use fracture_core::msg;
+    pub use fracture_core::stat;
+    pub use fracture_core::utils::wait_update_time;
 
-#[derive(Debug)]
+    pub use args::get_args;
+    pub use client::Client;
+    pub use handlers::get_default;
+    pub use types::{stati, ShutdownMessage};
+}
+use imports::*; //just so i can collapse it
+
+#[derive(Debug, Clone)]
 enum CommMessage {
     ConnectionFailed,
     ConnectionRefused,
     CTRLCExit,
 }
 
+struct CommChannels {
+    sending: MPSCSender<CommMessage>,
+    receiving: mpscwatcher::MPSCWatcherSubscription<CommMessage>,
+}
+
 fn main() -> Result<(), ()> {
     let args = get_args()?;
 
     println!("Connecting to: {:?} as {}", args.addr, args.name);
+    let also_name = args.name.clone();
 
     let (comm_incoming_send, comm_incoming_recv) = std_channel::<CommMessage>();
-    let (_comm_outgoing_send, comm_outgoing_recv) = std_channel::<CommMessage>();
+    let (comm_outgoing_send, comm_outgoing_recv) = std_channel::<CommMessage>();
+    let mut gui_comm_channels = CommChannels {
+        sending: comm_outgoing_send,
+        receiving: mpscwatcher::watch_dis(Uuid::new_v4().as_u128(), comm_incoming_recv),
+    };
 
     let comm_res = thread::spawn(move || {
         let comm_ctx = Builder::new_current_thread().enable_all().build().unwrap();
@@ -51,34 +68,177 @@ fn main() -> Result<(), ()> {
             comm_incoming_send,
             comm_outgoing_recv,
             args.addr,
-            args.name,
+            args.name.clone(),
         ));
     });
 
-    let printer = thread::spawn(move || {
-        loop {
-            match comm_incoming_recv.try_recv() {
-                Ok(msg) => {
-                    println!("{:#?}", msg);
-                }
-                Err(err) => {
-                    if err == TryRecvError::Disconnected {
-                        // fun trick here, when the client closes, the sender is dropped, and it will automatically close
-                        break;
-                    }
-                }
-            }
-        }
-    });
-
+    // let printer = thread::spawn(move || {
+    //     loop {
+    //         match comm_incoming_recv.try_recv() {
+    //             Ok(msg) => {
+    //                 println!("{:#?}", msg);
+    //             }
+    //             Err(err) => {
+    //                 if err == TryRecvError::Disconnected {
+    //                     // fun trick here, when the client closes, the sender is dropped, and it will automatically close
+    //                     break;
+    //                 }
+    //             }
+    //         }
+    //     }
+    // });
+    FractureClientGUI::run(Settings::with_flags(FractureGUIFlags::new(
+        gui_comm_channels,
+    )))
+    .unwrap();
     comm_res.join().unwrap();
-    printer.join().unwrap();
+    // printer.join().unwrap();
     Ok(())
 }
 
+#[derive(Clone, Debug)]
+enum GUIMessage {
+    SubmitMessage,
+    TextInputChanged(String),
+    ReceivedMessage(ChatMessage),
+    ReceivedCommMessage(mpscwatcher::MPSCWatcherUpdate<CommMessage>)
+}
+
+impl From<mpscwatcher::MPSCWatcherUpdate<CommMessage>> for GUIMessage {
+    fn from(item: mpscwatcher::MPSCWatcherUpdate<CommMessage>) -> GUIMessage {
+        GUIMessage::ReceivedCommMessage (item)
+    }
+}
+
+struct FractureGUIFlags {
+    comm: CommChannels,
+}
+
+impl FractureGUIFlags {
+    fn new(comm: CommChannels) -> Self {
+        FractureGUIFlags { comm }
+    }
+}
+
+struct FractureClientGUI {
+    send_button: button::State,
+    msg_input: text_input::State,
+    scroll_state: scrollable::State,
+    comm: CommChannels,
+    messages: Vec<ChatMessage>,
+    current_input: String,
+}
+
+impl Application for FractureClientGUI {
+    type Executor = executor::Default;
+    type Message = GUIMessage;
+    type Flags = FractureGUIFlags;
+
+    fn new(flags: FractureGUIFlags) -> (Self, Command<Self::Message>) {
+        (
+            Self {
+                send_button: button::State::new(),
+                msg_input: text_input::State::new(),
+                scroll_state: scrollable::State::new(),
+                comm: flags.comm,
+                messages: vec![],
+                current_input: String::new(),
+            },
+            Command::none(),
+        )
+    }
+
+    fn subscription(&self) -> Subscription<Self::Message> {
+        self.comm.receiving
+    }
+
+    fn title(&self) -> String {
+        "Fracture -- GUI testing".to_string()
+    }
+
+    fn update(
+        &mut self,
+        message: Self::Message,
+        _clipboard: &mut Clipboard,
+    ) -> Command<Self::Message> {
+        match message {
+            GUIMessage::SubmitMessage => {
+                if self.current_input != "" {
+                    println!("Sent msg: \"{}\"", self.current_input);
+                    self.current_input = "".to_string();
+                }
+            }
+            GUIMessage::ReceivedMessage(msg) => self.messages.push(msg),
+            GUIMessage::TextInputChanged(new_content) => {
+                self.current_input = new_content;
+            }
+            GUIMessage::ReceivedCommMessage(msg) => {
+                todo!()
+            }
+        }
+        Command::none()
+    }
+
+    fn view(&mut self) -> Element<Self::Message> {
+        Column::new()
+            .padding(2)
+            .align_items(Align::Center)
+            .push(
+                self.messages.iter_mut().fold(
+                    Scrollable::new(&mut self.scroll_state)
+                        .padding(5)
+                        .spacing(3)
+                        .align_items(Align::Start)
+                        .width(Length::Fill)
+                        .height(Length::Fill),
+                    |scroll, msg| scroll.push(msg.view()),
+                ),
+            )
+            .push(Space::with_height(Length::from(5)))
+            .push(
+                Row::new()
+                    .padding(10)
+                    .align_items(Align::Center)
+                    .push(
+                        TextInput::new(&mut self.msg_input, "", &self.current_input, |content| {
+                            GUIMessage::TextInputChanged(content)
+                        })
+                        .width(Length::Fill)
+                        .on_submit(GUIMessage::SubmitMessage)
+                        .padding(6),
+                    )
+                    .push(Space::with_width(Length::from(5)))
+                    .push(
+                        Button::new(&mut self.send_button, Text::new("Send"))
+                            .on_press(GUIMessage::SubmitMessage),
+                    ),
+            )
+            .into()
+    }
+}
+
+#[derive(Clone, Debug)]
+struct ChatMessage {
+    msg_text: String,
+    author_name: String,
+    // authors_uuid: Uuid,
+}
+
+impl ChatMessage {
+    fn view(&mut self) -> Element<GUIMessage> {
+        Row::new()
+            .align_items(Align::Start)
+            .spacing(4)
+            .padding(3)
+            .push(Text::new(self.author_name.clone() + ": "))
+            .push(Text::new(self.msg_text.clone()))
+            .into()
+    }
+}
+
 async fn comm_main(
-    comm_send: StdSender<CommMessage>,
-    _comm_rcvr: StdReceiver<CommMessage>,
+    comm_send: MPSCSender<CommMessage>,
+    _comm_rcvr: MPSCReceiver<CommMessage>,
     addr: std::net::SocketAddrV4,
     name: String,
 ) {

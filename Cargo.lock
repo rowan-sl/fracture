@@ -760,6 +760,8 @@ dependencies = [
  "clap",
  "fracture-core",
  "iced",
+ "iced_futures",
+ "iced_native",
  "parking_lot",
  "queues",
  "serde",
