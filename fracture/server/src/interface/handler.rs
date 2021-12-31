@@ -27,13 +27,14 @@ pub async fn handle_client(
             socket,
             String::from(NAME),
             get_default(),
-            global_handler_channel,
+            global_handler_channel.clone(),
         );
         println!(
             "Connected to {:?}, reported ip {:?}",
             addr,
             interface.get_client_addr().unwrap()
         );
+        let _ = global_handler_channel.send(GlobalHandlerOperation::ClientConnect { uuid: interface.uuid() });
         println!("client ID for {:?} is {:?}", addr, interface.uuid());
         loop {
             tokio::select! {
@@ -145,6 +146,9 @@ pub async fn handle_client(
                 }
             };
         }
+
+        let _ = global_handler_channel.send(GlobalHandlerOperation::ClientDisconnect { uuid: interface.uuid(), name: interface.name() });
+
         println!("Connection to {:?} closed", addr);
     })
 }

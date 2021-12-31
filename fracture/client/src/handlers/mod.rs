@@ -8,5 +8,6 @@ pub fn get_default() -> Vec<Box<dyn MessageHandler<Operation = HandlerOperation>
     vec![
         // modules::test_handler::TestHandler::new()
         modules::incoming_chat::IncomingChatHandler::new(),
+        modules::server_info_update::InfoUpdateHandler::new(),
     ]
 }

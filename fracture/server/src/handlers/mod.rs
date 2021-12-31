@@ -12,5 +12,6 @@ pub fn get_default(
         // modules::test_handler::TestHandler::new(),
         modules::impl_msg_all::MsgAllHandler::new(),
         modules::incoming_chat::IncomingChatHandler::new(),
+        modules::user_info::UserInfoUpdateHandler::new(),
     ]
 }

@@ -48,6 +48,11 @@ pub mod stati {
     }
 }
 
+pub trait ChatViewable<T> {
+    fn view(&mut self) -> Element<T>;
+}
+
+
 #[derive(Clone, Debug)]
 pub struct ChatMessage {
     msg_text: String,
@@ -63,8 +68,10 @@ impl ChatMessage {
             author_uuid: None,
         }
     }
+}
 
-    pub fn view(&mut self) -> Element<GUIMessage> {
+impl ChatViewable<GUIMessage> for ChatMessage {
+    fn view(&mut self) -> Element<GUIMessage> {
         Row::new()
             .align_items(Align::Start)
             .spacing(4)
@@ -104,10 +111,35 @@ impl From<ChatMessage> for fracture_core::msg::Message {
     }
 }
 
+#[derive(Clone, Debug)]
+pub struct RawMessage {
+    text: String,
+}
+
+impl RawMessage {
+    pub fn new(text: String) -> Self {
+        Self {
+            text
+        }
+    }
+}
+
+impl ChatViewable<GUIMessage> for RawMessage {
+    fn view(&mut self) -> Element<GUIMessage> {
+        Row::new()
+            .align_items(Align::Start)
+            .spacing(4)
+            .padding(3)
+            .push(Text::new(self.text.clone()))
+            .into()
+    }
+}
+
 /// For stuff to interact with the user
 #[derive(Clone, Debug)]
 pub enum InterfaceOperation {
     ReceivedChat(ChatMessage),
+    ReceivedRawMessage(RawMessage),
 }
 
 //TODO add more of these

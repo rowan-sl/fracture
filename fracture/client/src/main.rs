@@ -31,14 +31,17 @@ use fracture_core::utils::wait_update_time;
 use args::get_args;
 use client::Client;
 use handlers::get_default;
-use types::{stati, ChatMessage, ShutdownMessage};
+use types::{stati, ChatMessage, ShutdownMessage, ChatViewable, RawMessage};
 
 use conf::{GUI_BUSYLOOP_SLEEP_TIME_MS};
 
 #[derive(Debug, Clone)]
 enum CommMessage {
-    SendChat(ChatMessage),   //send to server
-    HandleChat(ChatMessage), //handle by gui
+    //GUI -> Comm
+    SendChat(ChatMessage),
+    //Comm -> GUI
+    HandleChat(ChatMessage),
+    RawMessage(RawMessage),
 }
 
 struct CommChannels {
@@ -107,7 +110,7 @@ struct FractureClientGUI {
     scroll_state: scrollable::State,
     comm: CommChannels,
     username: String,
-    messages: Vec<ChatMessage>,
+    chat_elems: Vec<Box<dyn ChatViewable<GUIMessage>>>,
     current_input: String,
     exit: bool,
 }
@@ -125,7 +128,7 @@ impl Application for FractureClientGUI {
                 scroll_state: scrollable::State::new(),
                 comm: flags.comm,
                 username: flags.name,
-                messages: vec![],
+                chat_elems: vec![],
                 current_input: String::new(),
                 exit: false,
             },
@@ -157,7 +160,7 @@ impl Application for FractureClientGUI {
                         .sending
                         .send(CommMessage::SendChat(chat_msg.clone()))
                         .expect("Sent message to comm thread");
-                    self.messages.push(chat_msg);
+                    self.chat_elems.push(Box::new(chat_msg));
                     self.current_input = "".to_string();
                 }
             }
@@ -167,7 +170,10 @@ impl Application for FractureClientGUI {
             GUIMessage::Ticked => match self.comm.receiving.try_recv() {
                 Ok(msg) => match msg {
                     CommMessage::HandleChat(chat_msg) => {
-                        self.messages.push(chat_msg);
+                        self.chat_elems.push(Box::new(chat_msg));
+                    }
+                    CommMessage::RawMessage(raw_msg) => {
+                        self.chat_elems.push(Box::new(raw_msg));
                     }
                     _ => panic!("GUI side received a message that it should not have!"),
                 },
@@ -192,7 +198,7 @@ impl Application for FractureClientGUI {
             .padding(2)
             .align_items(Align::Center)
             .push(
-                self.messages.iter_mut().fold(
+                self.chat_elems.iter_mut().fold(
                     Scrollable::new(&mut self.scroll_state)
                         .padding(5)
                         .spacing(3)
@@ -356,6 +362,9 @@ fn get_main_task(
                                                     } else {
                                                         comm_send.send(CommMessage::HandleChat(msg)).expect("GUI received CommMessage");
                                                     }
+                                                }
+                                                InterfaceOperation::ReceivedRawMessage (msg) => {
+                                                    comm_send.send(CommMessage::RawMessage(msg)).expect("GUI received CommMessage");
                                                 }
                                                 #[allow(unreachable_patterns)]//not a problem
                                                 unexpected => {panic!("unhandled InterfaceOperation:\n{:#?}", unexpected)}
