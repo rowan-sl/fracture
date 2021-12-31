@@ -85,11 +85,7 @@ pub fn get_args() -> Result<Args, ()> {
         } //handled by arg parser
     };
 
-    let name = if let Some(n) = args.value_of("name") {
-        String::from(n)
-    } else {
-        unreachable!()
-    };
+    let name = args.value_of("name").unwrap().to_string();
 
     Ok(Args { name, addr })
 }

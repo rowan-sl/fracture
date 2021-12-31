@@ -116,7 +116,7 @@ impl ClientInterface {
             global_handler_rx,
             server_name: name,
             client_name: None,
-            uuid: uuid,
+            uuid,
         }
     }
 
@@ -283,7 +283,7 @@ impl ClientInterface {
                 for handler in &mut self.handlers {
                     handler.accept_client_data(ClientInfo {
                         name: self.client_name.clone().expect("This should not happen"),
-                        uuid: self.uuid.clone(),
+                        uuid: self.uuid,
                     });
                 }
                 self.queue_message(Message {

@@ -4,39 +4,34 @@ mod handlers;
 // mod mpscwatcher;
 mod types;
 
-mod imports {
-    use super::*;
-    pub use std::sync::mpsc::{
-        channel as std_channel, Receiver as MPSCReceiver, Sender as MPSCSender, TryRecvError,
-    };
-    pub use std::thread;
+use std::sync::mpsc::{
+    channel as std_channel, Receiver as MPSCReceiver, Sender as MPSCSender, TryRecvError,
+};
+use std::thread;
 
-    pub use tokio::io;
-    pub use tokio::join;
-    pub use tokio::net::TcpStream;
-    pub use tokio::runtime::Builder;
-    pub use tokio::sync::broadcast::{channel, Receiver, Sender};
-    pub use tokio::task;
-    pub use tokio::task::JoinHandle;
+use tokio::io;
+use tokio::join;
+use tokio::net::TcpStream;
+use tokio::runtime::Builder;
+use tokio::sync::broadcast::{channel, Receiver, Sender};
+use tokio::task;
+use tokio::task::JoinHandle;
 
-    pub use iced::{
-        button, executor, scrollable, text_input, time, Align, Application, Button, Clipboard,
-        Column, Command, Element, Length, Row, Scrollable, Settings, Space, Subscription, Text,
-        TextInput,
-    };
+use iced::{
+    button, executor, scrollable, text_input, time, Align, Application, Button, Clipboard,
+    Column, Command, Element, Length, Row, Scrollable, Settings, Space, Subscription, Text,
+    TextInput,
+};
 
-    pub use uuid::Uuid;
+use fracture_core::msg;
+use fracture_core::stat;
+use fracture_core::utils::wait_update_time;
 
-    pub use fracture_core::msg;
-    pub use fracture_core::stat;
-    pub use fracture_core::utils::wait_update_time;
+use args::get_args;
+use client::Client;
+use handlers::get_default;
+use types::{stati, ChatMessage, ShutdownMessage};
 
-    pub use args::get_args;
-    pub use client::Client;
-    pub use handlers::get_default;
-    pub use types::{stati, ChatMessage, ShutdownMessage};
-}
-use imports::*; //just so i can collapse it
 
 const GUI_BUSYLOOP_SLEEP_TIME_MS: u64 = 300;
 
@@ -71,7 +66,7 @@ fn main() -> Result<(), ()> {
                 comm_incoming_send,
                 comm_outgoing_recv,
                 args.addr,
-                args.name.clone(),
+                args.name,
             ))
             .expect("Connected sucsessuflly to server");
     });
@@ -154,7 +149,7 @@ impl Application for FractureClientGUI {
     ) -> Command<Self::Message> {
         match message {
             GUIMessage::SubmitMessage => {
-                if self.current_input != "" {
+                if !self.current_input.is_empty() {
                     println!("Sent msg: \"{}\"", self.current_input);
                     let chat_msg =
                         ChatMessage::new(self.current_input.clone(), self.username.clone());
@@ -189,7 +184,7 @@ impl Application for FractureClientGUI {
     }
 
     fn should_exit(&self) -> bool {
-        self.exit.clone()
+        self.exit
     }
 
     fn view(&mut self) -> Element<Self::Message> {
@@ -316,9 +311,11 @@ fn get_main_task(
                     while let Ok(cmsg) = comm_recv.try_recv() {
                         match cmsg {
                             CommMessage::SendChat(msg) => {
-                                client.manual_handler_operation(types::HandlerOperation::ServerMsg{msg: msg.into()})
+                                client.manual_handler_operation(types::HandlerOperation::ServerMsg{msg: msg.into()});
                             }
-                            other => {panic!("Client handler received unexpected CommMessage\n{:#?}", other)}
+                            other => {
+                                panic!("Client handler received unexpected CommMessage\n{:#?}", other);
+                            }
                         }
                     }
                     match client.update().await {

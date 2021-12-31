@@ -94,11 +94,11 @@ impl TryFrom<fracture_core::msg::MessageVarient> for ChatMessage {
     }
 }
 
-impl Into<fracture_core::msg::Message> for ChatMessage {
-    fn into(self) -> fracture_core::msg::Message {
+impl From<ChatMessage> for fracture_core::msg::Message {
+    fn from(item: ChatMessage) -> fracture_core::msg::Message {
         fracture_core::msg::Message {
             data: fracture_core::msg::MessageVarient::ClientSendChat {
-                content: self.msg_text,
+                content: item.msg_text,
             },
         }
     }
