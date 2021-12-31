@@ -3,6 +3,7 @@ mod client;
 mod handlers;
 // mod mpscwatcher;
 mod types;
+mod conf;
 
 use std::sync::mpsc::{
     channel as std_channel, Receiver as MPSCReceiver, Sender as MPSCSender, TryRecvError,
@@ -32,8 +33,7 @@ use client::Client;
 use handlers::get_default;
 use types::{stati, ChatMessage, ShutdownMessage};
 
-
-const GUI_BUSYLOOP_SLEEP_TIME_MS: u64 = 300;
+use conf::{GUI_BUSYLOOP_SLEEP_TIME_MS};
 
 #[derive(Debug, Clone)]
 enum CommMessage {
