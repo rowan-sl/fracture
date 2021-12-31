@@ -39,6 +39,7 @@ pub mod stati {
     }
 
     pub enum UpdateStatus {
+        /// This means that the message was late, HOWEVER it will be reycled untill it is dealt with
         Unexpected(msg::Message),
         SendError(fracture_core::stat::SendStatus),
         Success,
