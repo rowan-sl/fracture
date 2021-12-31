@@ -77,7 +77,9 @@ pub struct ClientInterface {
     /// what state the interface is in (like waiting for the client to send connection/auth stuff)
     state: InterfaceState,
     /// Handlers for messages, to be asked to handle new incoming messages
-    handlers: Vec<Box<dyn ServerMessageHandler<ClientData = ClientInfo, Operation = HandlerOperation> + Send>>,
+    handlers: Vec<
+        Box<dyn ServerMessageHandler<ClientData = ClientInfo, Operation = HandlerOperation> + Send>,
+    >,
     pending_op: Queue<HandlerOperation>,
     global_handler_rx: broadcast::Receiver<GlobalHandlerOperation>,
     global_handler_tx: broadcast::Sender<GlobalHandlerOperation>,
@@ -92,7 +94,12 @@ impl ClientInterface {
     pub fn new(
         socket: TcpStream,
         name: String,
-        handlers: Vec<Box<dyn ServerMessageHandler<ClientData = ClientInfo, Operation = HandlerOperation> + Send>>,
+        handlers: Vec<
+            Box<
+                dyn ServerMessageHandler<ClientData = ClientInfo, Operation = HandlerOperation>
+                    + Send,
+            >,
+        >,
         global_handler_channel: broadcast::Sender<GlobalHandlerOperation>,
     ) -> Self {
         let global_handler_rx = global_handler_channel.subscribe();
@@ -274,7 +281,7 @@ impl ClientInterface {
             }
             InterfaceState::RecevedConnectMessage => {
                 for handler in &mut self.handlers {
-                    handler.accept_client_data(ClientInfo{
+                    handler.accept_client_data(ClientInfo {
                         name: self.client_name.clone().expect("This should not happen"),
                         uuid: self.uuid.clone(),
                     });

@@ -52,7 +52,7 @@ pub mod stati {
 pub struct ChatMessage {
     msg_text: String,
     author_name: String,
-    pub author_uuid: Option<uuid::Uuid>
+    pub author_uuid: Option<uuid::Uuid>,
 }
 
 impl ChatMessage {
@@ -80,16 +80,16 @@ impl TryFrom<fracture_core::msg::MessageVarient> for ChatMessage {
     fn try_from(item: fracture_core::msg::MessageVarient) -> Result<Self, Self::Error> {
         use fracture_core::msg::MessageVarient::ServerSendChat;
         match item {
-            ServerSendChat {content, author, author_uuid} => {
-                Ok(
-                    Self {
-                        msg_text: content,
-                        author_name: author,
-                        author_uuid: Some(uuid::Uuid::from_u128(author_uuid))
-                    }
-                )
-            }
-            _ => Err(())
+            ServerSendChat {
+                content,
+                author,
+                author_uuid,
+            } => Ok(Self {
+                msg_text: content,
+                author_name: author,
+                author_uuid: Some(uuid::Uuid::from_u128(author_uuid)),
+            }),
+            _ => Err(()),
         }
     }
 }
@@ -98,8 +98,8 @@ impl Into<fracture_core::msg::Message> for ChatMessage {
     fn into(self) -> fracture_core::msg::Message {
         fracture_core::msg::Message {
             data: fracture_core::msg::MessageVarient::ClientSendChat {
-                content: self.msg_text
-            }
+                content: self.msg_text,
+            },
         }
     }
 }

@@ -1,6 +1,6 @@
 use crate::handlers::imports::{GlobalHandlerOperation, HandlerOperation, MessageHandler};
+use crate::types::{ChatMessage, InterfaceOperation};
 use fracture_core::msg::MessageVarient::ServerSendChat;
-use crate::types::{InterfaceOperation, ChatMessage};
 
 pub struct IncomingChatHandler {
     pending: Vec<HandlerOperation>,
@@ -14,15 +14,19 @@ impl MessageHandler for IncomingChatHandler {
     }
 
     fn handle(&mut self, msg: &fracture_core::msg::Message) -> bool {
-        if let ServerSendChat {author, content, author_uuid} = msg.data.clone() {
-            println!("Received chat (uuid: {}): <{}> {} ", author_uuid, author, content);
-            self.pending.push(
-                HandlerOperation::InterfaceOperation(
-                    InterfaceOperation::ReceivedChat(
-                        ChatMessage::try_from(msg.data.clone()).unwrap()
-                    )
-                )
+        if let ServerSendChat {
+            author,
+            content,
+            author_uuid,
+        } = msg.data.clone()
+        {
+            println!(
+                "Received chat (uuid: {}): <{}> {} ",
+                author_uuid, author, content
             );
+            self.pending.push(HandlerOperation::InterfaceOperation(
+                InterfaceOperation::ReceivedChat(ChatMessage::try_from(msg.data.clone()).unwrap()),
+            ));
             true
         } else {
             false
@@ -44,5 +48,7 @@ impl MessageHandler for IncomingChatHandler {
         }
     }
 
-    fn get_default_operations(&mut self) -> Vec<Self::Operation> {vec![]}
+    fn get_default_operations(&mut self) -> Vec<Self::Operation> {
+        vec![]
+    }
 }

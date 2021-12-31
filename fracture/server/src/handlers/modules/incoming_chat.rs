@@ -1,8 +1,10 @@
-use crate::handlers::imports::{GlobalHandlerOperation, HandlerOperation, MessageHandler, ServerClientInfo, ServerMessageHandler, ClientInfo};
+use crate::handlers::imports::{
+    ClientInfo, GlobalHandlerOperation, HandlerOperation, MessageHandler, ServerClientInfo,
+    ServerMessageHandler,
+};
 use fracture_core::msg::MessageVarient::ClientSendChat;
 
 pub struct IncomingChatHandler {
-    pending: Vec<HandlerOperation>,
     pending_global: Vec<GlobalHandlerOperation>,
     client_data: Option<ClientInfo>,
 }
@@ -12,7 +14,6 @@ impl MessageHandler for IncomingChatHandler {
 
     fn new() -> Box<Self> {
         Box::new(Self {
-            pending: vec![],
             pending_global: vec![],
             client_data: None,
         })
@@ -49,7 +50,9 @@ impl MessageHandler for IncomingChatHandler {
         }
     }
 
-    fn get_operations(&mut self) -> Option<Vec<Self::Operation>> {None}
+    fn get_operations(&mut self) -> Option<Vec<Self::Operation>> {
+        None
+    }
 
     fn get_default_operations(&mut self) -> Vec<Self::Operation> {
         vec![]

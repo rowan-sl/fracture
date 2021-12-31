@@ -156,10 +156,8 @@ impl Application for FractureClientGUI {
             GUIMessage::SubmitMessage => {
                 if self.current_input != "" {
                     println!("Sent msg: \"{}\"", self.current_input);
-                    let chat_msg = ChatMessage::new(
-                        self.current_input.clone(),
-                        self.username.clone(),
-                    );
+                    let chat_msg =
+                        ChatMessage::new(self.current_input.clone(), self.username.clone());
                     self.comm
                         .sending
                         .send(CommMessage::SendChat(chat_msg.clone()))
@@ -362,6 +360,7 @@ fn get_main_task(
                                                         comm_send.send(CommMessage::HandleChat(msg)).expect("GUI received CommMessage");
                                                     }
                                                 }
+                                                #[allow(unreachable_patterns)]//not a problem
                                                 unexpected => {panic!("unhandled InterfaceOperation:\n{:#?}", unexpected)}
                                             }
                                         }

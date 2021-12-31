@@ -1,4 +1,3 @@
-use iced::image::Handle;
 use queues::queue;
 use queues::IsQueue;
 use queues::Queue;
@@ -296,7 +295,9 @@ impl Client {
 
     ///Manualy queue a handler operation to be run
     pub fn manual_handler_operation(&mut self, oper: HandlerOperation) {
-        self.pending_op.add(oper).expect("placed operation in queue");
+        self.pending_op
+            .add(oper)
+            .expect("placed operation in queue");
     }
 }
 

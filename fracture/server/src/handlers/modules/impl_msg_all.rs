@@ -1,7 +1,9 @@
 /// Implement msg GlobalHandlerOperation::MsgAll
 /// when it recieves this, it will send that message to its associated client
-
-use crate::handlers::imports::{GlobalHandlerOperation, HandlerOperation, MessageHandler, ServerClientInfo, ClientInfo, ServerMessageHandler};
+use crate::handlers::imports::{
+    ClientInfo, GlobalHandlerOperation, HandlerOperation, MessageHandler, ServerClientInfo,
+    ServerMessageHandler,
+};
 
 pub struct MsgAllHandler {
     pending: Vec<HandlerOperation>,
@@ -11,9 +13,7 @@ impl MessageHandler for MsgAllHandler {
     type Operation = HandlerOperation;
 
     fn new() -> Box<Self> {
-        Box::new(Self {
-            pending: vec![],
-        })
+        Box::new(Self { pending: vec![] })
     }
 
     fn handle(&mut self, _: &fracture_core::msg::Message) -> bool {
