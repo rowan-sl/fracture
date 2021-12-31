@@ -1,3 +1,4 @@
+use iced::image::Handle;
 use queues::queue;
 use queues::IsQueue;
 use queues::Queue;
@@ -20,7 +21,7 @@ pub struct Client {
     /// Pending handler operations
     pub pending_op: Queue<HandlerOperation>,
     handlers: Vec<Box<dyn MessageHandler<Operation = HandlerOperation> + Send>>,
-    server_info: Option<ServerInfo>,
+    pub server_info: Option<ServerInfo>,
     pub state: ClientState,
 }
 
@@ -280,7 +281,7 @@ impl Client {
         match op {
             Ok(op) => {
                 match op {
-                    HandlerOperation::InterfaceOperation(_inter_op) => Ok(Some(op)),
+                    HandlerOperation::InterfaceOperation(_) => Ok(Some(op)),
                     HandlerOperation::ServerMsg { msg } => {
                         self.queue_msg(msg);
                         Ok(None)
@@ -291,6 +292,11 @@ impl Client {
             }
             Err(_) => Err(None),
         }
+    }
+
+    ///Manualy queue a handler operation to be run
+    pub fn manual_handler_operation(&mut self, oper: HandlerOperation) {
+        self.pending_op.add(oper).expect("placed operation in queue");
     }
 }
 

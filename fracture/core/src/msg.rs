@@ -77,23 +77,16 @@ pub enum MessageVarient {
         close_message: String,
     },
 
-    /// A chat message to be distributed and sent to other clients.
-    ///
-    ///TODO finish
-    IncomingChatMessage {
+    /// Client sends this to server
+    ClientSendChat {
         content: String,
     },
 
-    /// A chat message to be received and handled by the client.
-    ///
-    ///TODO finish
-    OutgoingChatMessage {
-        sender: String,
-
-        /// This is a `u128` not `uuid::Uuid`, as that does not implement Serialize/Deseraialize :/
-        /// use `Uuid.as_u128` to get this version
-        uuid: u128,
-        message: String,
+    /// Server sends this to the client
+    ServerSendChat {
+        content: String,
+        author: String,
+        author_uuid: u128,
     },
 
     TestMessage {},

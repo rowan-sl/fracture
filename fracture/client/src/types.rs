@@ -1,3 +1,7 @@
+use iced::{Align, Element, Row, Text};
+
+use crate::GUIMessage;
+
 pub mod stati {
     use fracture_core::msg;
 
@@ -44,9 +48,67 @@ pub mod stati {
     }
 }
 
+#[derive(Clone, Debug)]
+pub struct ChatMessage {
+    msg_text: String,
+    author_name: String,
+    pub author_uuid: Option<uuid::Uuid>
+}
+
+impl ChatMessage {
+    pub fn new(msg_text: String, author_name: String) -> Self {
+        Self {
+            msg_text,
+            author_name,
+            author_uuid: None,
+        }
+    }
+
+    pub fn view(&mut self) -> Element<GUIMessage> {
+        Row::new()
+            .align_items(Align::Start)
+            .spacing(4)
+            .padding(3)
+            .push(Text::new(self.author_name.clone() + ": "))
+            .push(Text::new(self.msg_text.clone()))
+            .into()
+    }
+}
+
+impl TryFrom<fracture_core::msg::MessageVarient> for ChatMessage {
+    type Error = ();
+    fn try_from(item: fracture_core::msg::MessageVarient) -> Result<Self, Self::Error> {
+        use fracture_core::msg::MessageVarient::ServerSendChat;
+        match item {
+            ServerSendChat {content, author, author_uuid} => {
+                Ok(
+                    Self {
+                        msg_text: content,
+                        author_name: author,
+                        author_uuid: Some(uuid::Uuid::from_u128(author_uuid))
+                    }
+                )
+            }
+            _ => Err(())
+        }
+    }
+}
+
+impl Into<fracture_core::msg::Message> for ChatMessage {
+    fn into(self) -> fracture_core::msg::Message {
+        fracture_core::msg::Message {
+            data: fracture_core::msg::MessageVarient::ClientSendChat {
+                content: self.msg_text
+            }
+        }
+    }
+}
+
 /// For stuff to interact with the user
-#[derive(Clone, Copy, Debug)]
-pub enum InterfaceOperation {}
+#[derive(Clone, Debug)]
+pub enum InterfaceOperation {
+    ReceivedChat(ChatMessage),
+}
 
 //TODO add more of these
 /// Operations that a `MessageHandler` can request occur
@@ -72,6 +134,7 @@ pub enum ClientState {
     Ready,
 }
 
+#[derive(Clone)]
 pub struct ServerInfo {
     pub name: String,
     pub client_uuid: uuid::Uuid,

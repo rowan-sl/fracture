@@ -1,4 +1,4 @@
-use crate::handlers::imports::{GlobalHandlerOperation, HandlerOperation, MessageHandler};
+use crate::handlers::imports::{GlobalHandlerOperation, HandlerOperation, ServerMessageHandler, ClientInfo, ServerClientInfo, MessageHandler};
 use fracture_core::msg::MessageVarient::TestMessage;
 
 pub struct TestHandler {
@@ -62,3 +62,11 @@ impl MessageHandler for TestHandler {
         vec![]
     }
 }
+
+impl ServerClientInfo for TestHandler {
+    type ClientData = ClientInfo;
+
+    fn accept_client_data(&mut self, _data: Self::ClientData) {}
+}
+
+impl ServerMessageHandler for TestHandler {}

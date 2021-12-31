@@ -31,3 +31,13 @@ pub trait MessageHandler {
     /// Get all global operations the handler is requesting be performed
     fn get_global_operations(&mut self) -> Option<Vec<GlobalHandlerOperation>>;
 }
+
+/// Trait for a handler that requires info about the server
+/// all server handlers must implement this
+pub trait ServerClientInfo {
+    type ClientData;
+
+    fn accept_client_data(&mut self, data: Self::ClientData);
+}
+
+pub trait ServerMessageHandler: MessageHandler + ServerClientInfo {}

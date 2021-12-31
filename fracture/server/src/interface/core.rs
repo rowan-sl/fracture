@@ -11,7 +11,7 @@ use tokio::sync::broadcast;
 use tokio::sync::broadcast::error::TryRecvError;
 
 use fracture_core::handler::GlobalHandlerOperation;
-use fracture_core::handler::MessageHandler;
+use fracture_core::handler::ServerMessageHandler;
 use fracture_core::msg;
 use fracture_core::stat;
 use fracture_core::SocketUtils;
@@ -53,6 +53,12 @@ pub enum HandlerOperation {
     Client { msg: msg::Message },
 }
 
+#[derive(Clone, Debug)]
+pub struct ClientInfo {
+    pub name: String,
+    pub uuid: uuid::Uuid,
+}
+
 //TODO this
 #[derive(Debug)]
 pub enum InterfaceState {
@@ -71,7 +77,7 @@ pub struct ClientInterface {
     /// what state the interface is in (like waiting for the client to send connection/auth stuff)
     state: InterfaceState,
     /// Handlers for messages, to be asked to handle new incoming messages
-    handlers: Vec<Box<dyn MessageHandler<Operation = HandlerOperation> + Send>>,
+    handlers: Vec<Box<dyn ServerMessageHandler<ClientData = ClientInfo, Operation = HandlerOperation> + Send>>,
     pending_op: Queue<HandlerOperation>,
     global_handler_rx: broadcast::Receiver<GlobalHandlerOperation>,
     global_handler_tx: broadcast::Sender<GlobalHandlerOperation>,
@@ -86,10 +92,11 @@ impl ClientInterface {
     pub fn new(
         socket: TcpStream,
         name: String,
-        handlers: Vec<Box<dyn MessageHandler<Operation = HandlerOperation> + Send>>,
+        handlers: Vec<Box<dyn ServerMessageHandler<ClientData = ClientInfo, Operation = HandlerOperation> + Send>>,
         global_handler_channel: broadcast::Sender<GlobalHandlerOperation>,
     ) -> Self {
         let global_handler_rx = global_handler_channel.subscribe();
+        let uuid = uuid::Uuid::new_v4();
         Self {
             to_send: queue![],
             incoming: queue![],
@@ -102,7 +109,7 @@ impl ClientInterface {
             global_handler_rx,
             server_name: name,
             client_name: None,
-            uuid: uuid::Uuid::new_v4(),
+            uuid: uuid,
         }
     }
 
@@ -163,21 +170,6 @@ impl ClientInterface {
                 }
             }
         };
-    }
-
-    #[allow(dead_code)]
-    pub fn register_handler(
-        &mut self,
-        handler: Box<dyn MessageHandler<Operation = HandlerOperation> + Send>,
-    ) {
-        self.handlers.push(handler);
-    }
-
-    #[allow(dead_code)]
-    pub fn get_handlers(
-        &mut self,
-    ) -> &mut Vec<Box<dyn MessageHandler<Operation = HandlerOperation> + Send>> {
-        &mut self.handlers
     }
 
     /// Get the address of the client connected
@@ -281,6 +273,12 @@ impl ClientInterface {
                 }
             }
             InterfaceState::RecevedConnectMessage => {
+                for handler in &mut self.handlers {
+                    handler.accept_client_data(ClientInfo{
+                        name: self.client_name.clone().expect("This should not happen"),
+                        uuid: self.uuid.clone(),
+                    });
+                }
                 self.queue_message(Message {
                     data: MessageVarient::ServerInfo {
                         server_name: self.server_name.clone(),
