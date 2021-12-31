@@ -1,6 +1,7 @@
-mod conf;
 mod handlers;
 mod interface;
+
+pub use fracture_config::server as conf;
 
 use tokio::{io, net::TcpListener, sync::broadcast, task};
 

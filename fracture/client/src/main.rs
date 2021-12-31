@@ -3,7 +3,8 @@ mod client;
 mod handlers;
 // mod mpscwatcher;
 mod types;
-mod conf;
+
+pub use fracture_config::client as conf;
 
 use std::sync::mpsc::{
     channel as std_channel, Receiver as MPSCReceiver, Sender as MPSCSender, TryRecvError,
