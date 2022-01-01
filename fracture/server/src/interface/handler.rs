@@ -6,9 +6,9 @@ use fracture_core::handler::GlobalHandlerOperation;
 use fracture_core::stat;
 use fracture_core::utils::wait_update_time;
 
-use crate::conf::NAME;
 use crate::handlers::get_default;
 use crate::interface::core::{stati, ClientInterface};
+use crate::args;
 
 #[derive(Clone, Debug)]
 pub struct ShutdownMessage {
@@ -20,12 +20,13 @@ pub async fn handle_client(
     addr: std::net::SocketAddr,
     shutdown_sender: &Sender<ShutdownMessage>,
     global_handler_channel: Sender<GlobalHandlerOperation>,
+    args: args::Args,
 ) -> task::JoinHandle<()> {
     let mut client_shutdown_channel = shutdown_sender.subscribe(); //make shure to like and
     tokio::spawn(async move {
         let mut interface = ClientInterface::new(
             socket,
-            String::from(NAME),
+            String::from(args.name),
             get_default(),
             global_handler_channel.clone(),
         );

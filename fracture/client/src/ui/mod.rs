@@ -53,7 +53,7 @@ impl Application for FractureClientGUI {
     }
 
     fn title(&self) -> String {
-        "Fracture -- GUI testing".to_string()
+        "Fracture".to_string()
     }
 
     fn update(
