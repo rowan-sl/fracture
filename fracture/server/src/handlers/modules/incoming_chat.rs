@@ -2,29 +2,34 @@ use crate::handlers::imports::{
     ClientInfo, GlobalHandlerOperation, HandlerOperation, MessageHandler, ServerClientInfo,
     ServerMessageHandler,
 };
-use fracture_core::msg::MessageVarient::TestMessage;
+use fracture_core::msg::MessageVarient::ClientSendChat;
 
-pub struct TestHandler {
-    pending: Vec<HandlerOperation>,
+pub struct IncomingChatHandler {
     pending_global: Vec<GlobalHandlerOperation>,
+    client_data: Option<ClientInfo>,
 }
 
-impl MessageHandler for TestHandler {
+impl MessageHandler for IncomingChatHandler {
     type Operation = HandlerOperation;
 
     fn new() -> Box<Self> {
         Box::new(Self {
-            pending: vec![],
             pending_global: vec![],
+            client_data: None,
         })
     }
 
     fn handle(&mut self, msg: &fracture_core::msg::Message) -> bool {
-        if let TestMessage {} = msg.data {
-            println!("Received test message");
+        if let ClientSendChat { content } = msg.data.clone() {
+            println!("Received message {}", content);
+            let dat = self.client_data.clone().unwrap();
             self.pending_global.push(GlobalHandlerOperation::MsgAll {
                 msg: fracture_core::msg::Message {
-                    data: fracture_core::msg::MessageVarient::TestMessageResponse {},
+                    data: fracture_core::msg::MessageVarient::ServerSendChat {
+                        content,
+                        author: dat.name,
+                        author_uuid: dat.uuid.as_u128(),
+                    },
                 },
             });
             true
@@ -33,13 +38,7 @@ impl MessageHandler for TestHandler {
         }
     }
 
-    fn handle_global_op(&mut self, op: &GlobalHandlerOperation) {
-        #[allow(irrefutable_let_patterns)] //not a issue, will fix itself later
-        if let GlobalHandlerOperation::MsgAll { msg } = op {
-            self.pending
-                .push(HandlerOperation::Client { msg: msg.clone() });
-        }
-    }
+    fn handle_global_op(&mut self, _op: &GlobalHandlerOperation) {}
 
     fn get_global_operations(&mut self) -> Option<Vec<GlobalHandlerOperation>> {
         if self.pending_global.is_empty() {
@@ -52,13 +51,7 @@ impl MessageHandler for TestHandler {
     }
 
     fn get_operations(&mut self) -> Option<Vec<Self::Operation>> {
-        if self.pending.is_empty() {
-            None
-        } else {
-            let res = Some(self.pending.clone());
-            self.pending.clear();
-            res
-        }
+        None
     }
 
     fn get_default_operations(&mut self) -> Vec<Self::Operation> {
@@ -66,10 +59,12 @@ impl MessageHandler for TestHandler {
     }
 }
 
-impl ServerClientInfo for TestHandler {
+impl ServerClientInfo for IncomingChatHandler {
     type ClientData = ClientInfo;
 
-    fn accept_client_data(&mut self, _data: Self::ClientData) {}
+    fn accept_client_data(&mut self, data: Self::ClientData) {
+        self.client_data = Some(data);
+    }
 }
 
-impl ServerMessageHandler for TestHandler {}
+impl ServerMessageHandler for IncomingChatHandler {}

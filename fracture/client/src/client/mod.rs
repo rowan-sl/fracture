@@ -13,14 +13,14 @@ use fracture_core::SocketUtils;
 use crate::types::{stati, ClientState, HandlerOperation, ServerInfo};
 
 pub struct Client {
-    name: String,//the name of the client
+    name: String, //the name of the client
     sock: TcpStream,
     pub incoming: Queue<msg::Message>,
     outgoing: Queue<msg::Message>,
     /// Pending handler operations
     pub pending_op: Queue<HandlerOperation>,
     handlers: Vec<Box<dyn MessageHandler<Operation = HandlerOperation> + Send>>,
-    server_info: Option<ServerInfo>,
+    pub server_info: Option<ServerInfo>,
     pub state: ClientState,
 }
 
@@ -212,7 +212,10 @@ impl Client {
                                 self.state = ClientState::GetHandlerDefaultOps;
                                 Success
                             }
-                            _ => Unexpected(msg),
+                            _ => {
+                                self.incoming.add(msg.clone()).unwrap();
+                                Unexpected(msg)
+                            }
                         }
                     }
                     Err(_) => Noop,
@@ -280,7 +283,7 @@ impl Client {
         match op {
             Ok(op) => {
                 match op {
-                    HandlerOperation::InterfaceOperation(_inter_op) => Ok(Some(op)),
+                    HandlerOperation::InterfaceOperation(_) => Ok(Some(op)),
                     HandlerOperation::ServerMsg { msg } => {
                         self.queue_msg(msg);
                         Ok(None)
@@ -291,6 +294,13 @@ impl Client {
             }
             Err(_) => Err(None),
         }
+    }
+
+    ///Manualy queue a handler operation to be run
+    pub fn manual_handler_operation(&mut self, oper: HandlerOperation) {
+        self.pending_op
+            .add(oper)
+            .expect("placed operation in queue");
     }
 }
 

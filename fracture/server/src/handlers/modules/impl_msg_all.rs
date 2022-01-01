@@ -1,36 +1,23 @@
+/// Implement msg GlobalHandlerOperation::MsgAll
+/// when it recieves this, it will send that message to its associated client
 use crate::handlers::imports::{
     ClientInfo, GlobalHandlerOperation, HandlerOperation, MessageHandler, ServerClientInfo,
     ServerMessageHandler,
 };
-use fracture_core::msg::MessageVarient::TestMessage;
 
-pub struct TestHandler {
+pub struct MsgAllHandler {
     pending: Vec<HandlerOperation>,
-    pending_global: Vec<GlobalHandlerOperation>,
 }
 
-impl MessageHandler for TestHandler {
+impl MessageHandler for MsgAllHandler {
     type Operation = HandlerOperation;
 
     fn new() -> Box<Self> {
-        Box::new(Self {
-            pending: vec![],
-            pending_global: vec![],
-        })
+        Box::new(Self { pending: vec![] })
     }
 
-    fn handle(&mut self, msg: &fracture_core::msg::Message) -> bool {
-        if let TestMessage {} = msg.data {
-            println!("Received test message");
-            self.pending_global.push(GlobalHandlerOperation::MsgAll {
-                msg: fracture_core::msg::Message {
-                    data: fracture_core::msg::MessageVarient::TestMessageResponse {},
-                },
-            });
-            true
-        } else {
-            false
-        }
+    fn handle(&mut self, _: &fracture_core::msg::Message) -> bool {
+        false
     }
 
     fn handle_global_op(&mut self, op: &GlobalHandlerOperation) {
@@ -42,13 +29,7 @@ impl MessageHandler for TestHandler {
     }
 
     fn get_global_operations(&mut self) -> Option<Vec<GlobalHandlerOperation>> {
-        if self.pending_global.is_empty() {
-            None
-        } else {
-            let res = Some(self.pending_global.clone());
-            self.pending_global.clear();
-            res
-        }
+        None
     }
 
     fn get_operations(&mut self) -> Option<Vec<Self::Operation>> {
@@ -66,10 +47,10 @@ impl MessageHandler for TestHandler {
     }
 }
 
-impl ServerClientInfo for TestHandler {
+impl ServerClientInfo for MsgAllHandler {
     type ClientData = ClientInfo;
 
     fn accept_client_data(&mut self, _data: Self::ClientData) {}
 }
 
-impl ServerMessageHandler for TestHandler {}
+impl ServerMessageHandler for MsgAllHandler {}

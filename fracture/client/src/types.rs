@@ -1,3 +1,9 @@
+use std::sync::mpsc::{Receiver as MPSCReceiver, Sender as MPSCSender};
+
+use iced::{Align, Element, Row, Text};
+
+use crate::ui::types::GUIMessage;
+
 pub mod stati {
     use fracture_core::msg;
 
@@ -35,6 +41,7 @@ pub mod stati {
     }
 
     pub enum UpdateStatus {
+        /// This means that the message was late, HOWEVER it will be reycled untill it is dealt with
         Unexpected(msg::Message),
         SendError(fracture_core::stat::SendStatus),
         Success,
@@ -44,9 +51,96 @@ pub mod stati {
     }
 }
 
+pub trait ChatViewable<T> {
+    fn view(&mut self) -> Element<T>;
+}
+
+#[derive(Clone, Debug)]
+pub struct ChatMessage {
+    msg_text: String,
+    author_name: String,
+    pub author_uuid: Option<uuid::Uuid>,
+}
+
+impl ChatMessage {
+    pub fn new(msg_text: String, author_name: String) -> Self {
+        Self {
+            msg_text,
+            author_name,
+            author_uuid: None,
+        }
+    }
+}
+
+impl ChatViewable<GUIMessage> for ChatMessage {
+    fn view(&mut self) -> Element<GUIMessage> {
+        Row::new()
+            .align_items(Align::Start)
+            .spacing(4)
+            .padding(3)
+            .push(Text::new(self.author_name.clone() + ": "))
+            .push(Text::new(self.msg_text.clone()))
+            .into()
+    }
+}
+
+impl TryFrom<fracture_core::msg::MessageVarient> for ChatMessage {
+    type Error = ();
+    fn try_from(item: fracture_core::msg::MessageVarient) -> Result<Self, Self::Error> {
+        use fracture_core::msg::MessageVarient::ServerSendChat;
+        match item {
+            ServerSendChat {
+                content,
+                author,
+                author_uuid,
+            } => Ok(Self {
+                msg_text: content,
+                author_name: author,
+                author_uuid: Some(uuid::Uuid::from_u128(author_uuid)),
+            }),
+            _ => Err(()),
+        }
+    }
+}
+
+impl From<ChatMessage> for fracture_core::msg::Message {
+    fn from(item: ChatMessage) -> fracture_core::msg::Message {
+        fracture_core::msg::Message {
+            data: fracture_core::msg::MessageVarient::ClientSendChat {
+                content: item.msg_text,
+            },
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct RawMessage {
+    text: String,
+}
+
+impl RawMessage {
+    pub fn new(text: String) -> Self {
+        Self { text }
+    }
+}
+
+impl ChatViewable<GUIMessage> for RawMessage {
+    fn view(&mut self) -> Element<GUIMessage> {
+        Row::new()
+            .align_items(Align::Start)
+            .spacing(4)
+            .padding(3)
+            .push(Text::new(self.text.clone()))
+            .into()
+    }
+}
+
 /// For stuff to interact with the user
-#[derive(Clone, Copy, Debug)]
-pub enum InterfaceOperation {}
+#[derive(Clone, Debug)]
+pub enum InterfaceOperation {
+    ReceivedChat(ChatMessage),
+    ReceivedRawMessage(RawMessage),
+}
 
 //TODO add more of these
 /// Operations that a `MessageHandler` can request occur
@@ -72,6 +166,7 @@ pub enum ClientState {
     Ready,
 }
 
+#[derive(Clone)]
 pub struct ServerInfo {
     pub name: String,
     pub client_uuid: uuid::Uuid,
@@ -79,3 +174,17 @@ pub struct ServerInfo {
 
 #[derive(Clone, Debug)]
 pub struct ShutdownMessage {}
+
+#[derive(Debug, Clone)]
+pub enum CommMessage {
+    //GUI -> Comm
+    SendChat(ChatMessage),
+    //Comm -> GUI
+    HandleChat(ChatMessage),
+    RawMessage(RawMessage),
+}
+
+pub struct CommChannels {
+    pub sending: MPSCSender<CommMessage>,
+    pub receiving: MPSCReceiver<CommMessage>,
+}

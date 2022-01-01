@@ -73,7 +73,6 @@ const fn letter2int(ltr: char) -> Result<u8, char> {
     }
 }
 
-#[must_use]
 fn num_to_code(mut num: u128) -> Result<String, u128> {
     let mut res = String::new();
     loop {
@@ -88,7 +87,6 @@ fn num_to_code(mut num: u128) -> Result<String, u128> {
     Ok(res.chars().rev().collect::<String>())
 }
 
-#[must_use]
 fn code_to_num(mut code: String) -> Result<u128, char> {
     let mut res: u128 = 0;
     code.make_ascii_uppercase();
@@ -100,7 +98,6 @@ fn code_to_num(mut code: String) -> Result<u128, char> {
     Ok(res)
 }
 
-#[must_use]
 pub fn ip_to_code(ip: std::net::SocketAddrV4) -> Result<String, u128> {
     let addr = ip.ip();
     let pts = addr.octets();
@@ -118,7 +115,7 @@ pub fn ip_to_code(ip: std::net::SocketAddrV4) -> Result<String, u128> {
     combined += u128::from(addr_pt2) * 1_000_000;
     combined += u128::from(addr_pt1) * 1_000_000_000;
     combined += u128::from(port) * 1_000_000_000_000;
-    Ok(num_to_code(combined)?)
+    num_to_code(combined)
 }
 
 /// Converts a letter code into a socket addr
@@ -181,7 +178,6 @@ impl From<std::num::TryFromIntError> for CodeToIpError {
 ///
 /// # Errors
 /// if the number decoded from the codes cannot be converted into `u8` or `u16` for the address and port respectively
-#[must_use]
 pub fn code_to_ip_safe(code: String) -> Result<std::net::SocketAddrV4, CodeToIpError> {
     let mut combined = code_to_num(code)?;
 

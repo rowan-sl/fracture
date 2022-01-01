@@ -1,6 +1,21 @@
 #[derive(Clone, Debug)]
 pub enum GlobalHandlerOperation {
-    MsgAll { msg: crate::msg::Message },
+    MsgAll {
+        msg: crate::msg::Message,
+    },
+
+    // no handler should produce these, they are produced by the clients wrapper (server only)
+    ClientDisconnect {
+        uuid: uuid::Uuid,
+        name: Option<String>,
+    },
+    ClientConnect {
+        uuid: uuid::Uuid,
+    },
+    ClientNamed {
+        uuid: uuid::Uuid,
+        name: String,
+    },
 }
 
 /// Generic trait for createing a message handler.
@@ -31,3 +46,13 @@ pub trait MessageHandler {
     /// Get all global operations the handler is requesting be performed
     fn get_global_operations(&mut self) -> Option<Vec<GlobalHandlerOperation>>;
 }
+
+/// Trait for a handler that requires info about the server
+/// all server handlers must implement this
+pub trait ServerClientInfo {
+    type ClientData;
+
+    fn accept_client_data(&mut self, data: Self::ClientData);
+}
+
+pub trait ServerMessageHandler: MessageHandler + ServerClientInfo {}

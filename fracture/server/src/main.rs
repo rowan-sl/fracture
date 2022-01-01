@@ -1,17 +1,34 @@
-mod conf;
+mod args;
 mod handlers;
 mod interface;
 
+use fracture_config::server as conf;
+
 use tokio::{io, net::TcpListener, sync::broadcast, task};
 
-use fracture_core::utils::ipencoding;
 use fracture_core::handler::GlobalHandlerOperation;
+use fracture_core::utils::ipencoding;
 
-use conf::ADDR;
 use interface::{handler::handle_client, handler::ShutdownMessage};
 
+
+#[derive(Debug)]
+enum MainErr {
+    ArgsError(args::ParserError),
+}
+
+impl From<args::ParserError> for MainErr {
+    fn from(item: args::ParserError) -> Self {
+        Self::ArgsError(item)
+    }
+}
+
 #[tokio::main]
-async fn main() -> io::Result<()> {
+async fn main() -> Result<(), MainErr> {
+    let args = args::ParsedArgs::get()?;
+
+    println!("Launching server `{}` on `{}`", args.name, args.full_addr);
+
     let (shutdown_tx, _): (
         broadcast::Sender<ShutdownMessage>,
         broadcast::Receiver<ShutdownMessage>,
@@ -19,7 +36,7 @@ async fn main() -> io::Result<()> {
 
     let ctrlc_transmitter = shutdown_tx.clone();
 
-    let accepter_task = get_client_listener(shutdown_tx);
+    let accepter_task = get_client_listener(shutdown_tx, args.clone());
     let wait_for_ctrlc = get_ctrlc_listener(ctrlc_transmitter);
 
     // wait for ctrl+c, and then send the shutdown message, then wait for the other task to finish
@@ -29,6 +46,7 @@ async fn main() -> io::Result<()> {
 
 fn get_client_listener(
     shutdown_tx: broadcast::Sender<ShutdownMessage>,
+    args: args::ParsedArgs,
 ) -> task::JoinHandle<io::Result<()>> {
     tokio::spawn(async move {
         let (global_oper_tx, _): (
@@ -37,11 +55,17 @@ fn get_client_listener(
         ) = broadcast::channel(conf::GLOBAL_HANDLER_OP_LIMIT);
         let mut accepter_shutdown_rx = shutdown_tx.subscribe();
         // TODO make address configurable
-        let listener = TcpListener::bind(ADDR).await?;
+        let listener = TcpListener::bind(args.full_addr.clone()).await?;
         println!(
             "Started listening on {:?}, join this server with code {:?}",
-            ADDR,
-            ipencoding::ip_to_code(ADDR.parse::<std::net::SocketAddrV4>().unwrap()).unwrap()
+            listener.local_addr().unwrap().to_string(),
+            ipencoding::ip_to_code(match listener.local_addr().unwrap() {
+                std::net::SocketAddr::V4(addr) => {
+                    addr
+                }
+                _ => panic!("got SocketAddrV6 instead of v4"),
+            })
+            .unwrap()
         );
         let mut tasks: Vec<task::JoinHandle<()>> = vec![];
 
@@ -52,7 +76,7 @@ fn get_client_listener(
                         Ok(socket_addr) => {
                             let (socket, addr) = socket_addr;
 
-                            tasks.push(handle_client(socket, addr, &shutdown_tx, global_oper_tx.clone()).await);
+                            tasks.push(handle_client(socket, addr, &shutdown_tx, global_oper_tx.clone(), args.clone()).await);
                         },
                         Err(err) => {
                             println!("Error while accepting a client {:?}", err);

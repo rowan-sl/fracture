@@ -10,8 +10,8 @@ use tokio::net::TcpStream;
 use tokio::sync::broadcast;
 use tokio::sync::broadcast::error::TryRecvError;
 
-use fracture_core::handler::MessageHandler;
 use fracture_core::handler::GlobalHandlerOperation;
+use fracture_core::handler::ServerMessageHandler;
 use fracture_core::msg;
 use fracture_core::stat;
 use fracture_core::SocketUtils;
@@ -53,6 +53,12 @@ pub enum HandlerOperation {
     Client { msg: msg::Message },
 }
 
+#[derive(Clone, Debug)]
+pub struct ClientInfo {
+    pub name: String,
+    pub uuid: uuid::Uuid,
+}
+
 //TODO this
 #[derive(Debug)]
 pub enum InterfaceState {
@@ -71,7 +77,9 @@ pub struct ClientInterface {
     /// what state the interface is in (like waiting for the client to send connection/auth stuff)
     state: InterfaceState,
     /// Handlers for messages, to be asked to handle new incoming messages
-    handlers: Vec<Box<dyn MessageHandler<Operation = HandlerOperation> + Send>>,
+    handlers: Vec<
+        Box<dyn ServerMessageHandler<ClientData = ClientInfo, Operation = HandlerOperation> + Send>,
+    >,
     pending_op: Queue<HandlerOperation>,
     global_handler_rx: broadcast::Receiver<GlobalHandlerOperation>,
     global_handler_tx: broadcast::Sender<GlobalHandlerOperation>,
@@ -86,10 +94,16 @@ impl ClientInterface {
     pub fn new(
         socket: TcpStream,
         name: String,
-        handlers: Vec<Box<dyn MessageHandler<Operation = HandlerOperation> + Send>>,
+        handlers: Vec<
+            Box<
+                dyn ServerMessageHandler<ClientData = ClientInfo, Operation = HandlerOperation>
+                    + Send,
+            >,
+        >,
         global_handler_channel: broadcast::Sender<GlobalHandlerOperation>,
     ) -> Self {
         let global_handler_rx = global_handler_channel.subscribe();
+        let uuid = uuid::Uuid::new_v4();
         Self {
             to_send: queue![],
             incoming: queue![],
@@ -102,7 +116,7 @@ impl ClientInterface {
             global_handler_rx,
             server_name: name,
             client_name: None,
-            uuid: uuid::Uuid::new_v4(),
+            uuid,
         }
     }
 
@@ -163,21 +177,6 @@ impl ClientInterface {
                 }
             }
         };
-    }
-
-    #[allow(dead_code)]
-    pub fn register_handler(
-        &mut self,
-        handler: Box<dyn MessageHandler<Operation = HandlerOperation> + Send>,
-    ) {
-        self.handlers.push(handler);
-    }
-
-    #[allow(dead_code)]
-    pub fn get_handlers(
-        &mut self,
-    ) -> &mut Vec<Box<dyn MessageHandler<Operation = HandlerOperation> + Send>> {
-        &mut self.handlers
     }
 
     /// Get the address of the client connected
@@ -263,6 +262,12 @@ impl ClientInterface {
                                 "Client named itself and completed auth: {:#?}",
                                 self.name().unwrap()
                             );
+                            let _ =
+                                self.global_handler_tx
+                                    .send(GlobalHandlerOperation::ClientNamed {
+                                        uuid: self.uuid(),
+                                        name: self.name().unwrap(),
+                                    });
                             self.state = InterfaceState::RecevedConnectMessage;
                             return stati::UpdateStatus::Sucsess;
                         }
@@ -281,6 +286,12 @@ impl ClientInterface {
                 }
             }
             InterfaceState::RecevedConnectMessage => {
+                for handler in &mut self.handlers {
+                    handler.accept_client_data(ClientInfo {
+                        name: self.client_name.clone().expect("This should not happen"),
+                        uuid: self.uuid,
+                    });
+                }
                 self.queue_message(Message {
                     data: MessageVarient::ServerInfo {
                         server_name: self.server_name.clone(),
@@ -349,7 +360,7 @@ impl ClientInterface {
                     self.queue_message(msg).unwrap();
                     Ok(None)
                 }
-                #[allow(unreachable_patterns)]//this is fine, it will fix itself later
+                #[allow(unreachable_patterns)] //this is fine, it will fix itself later
                 _ => Err(Some(op)),
             },
             Err(_) => Err(None),
@@ -379,19 +390,15 @@ impl ClientInterface {
                 Ok(op) => {
                     self.pending_global_ops.add(op).unwrap();
                 }
-                Err(err) => {
-                    match err {
-                        TryRecvError::Closed => {
-                            panic!("No senders left! this should not happen");
-                        }
-                        TryRecvError::Lagged (amnt) => {
-                            panic!("Missed receiving {} global operations! if this continues, increase the max allowed ammount!", amnt);
-                        }
-                        TryRecvError::Empty => {
-                            break
-                        }
+                Err(err) => match err {
+                    TryRecvError::Closed => {
+                        panic!("No senders left! this should not happen");
                     }
-                }
+                    TryRecvError::Lagged(amnt) => {
+                        panic!("Missed receiving {} global operations! if this continues, increase the max allowed ammount!", amnt);
+                    }
+                    TryRecvError::Empty => break,
+                },
             }
         }
     }
