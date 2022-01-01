@@ -10,24 +10,24 @@ use fracture_core::handler::GlobalHandlerOperation;
 use fracture_core::utils::ipencoding;
 
 use interface::{handler::handle_client, handler::ShutdownMessage};
-use args::{get_args, ArgsError, Args};
+
 
 #[derive(Debug)]
 enum MainErr {
-    ArgsError(ArgsError),
+    ArgsError(args::ParserError),
 }
 
-impl From<ArgsError> for MainErr {
-    fn from(item: ArgsError) -> Self {
+impl From<args::ParserError> for MainErr {
+    fn from(item: args::ParserError) -> Self {
         Self::ArgsError(item)
     }
 }
 
 #[tokio::main]
 async fn main() -> Result<(), MainErr> {
-    let args = get_args()?;
+    let args = args::ParsedArgs::get()?;
 
-    println!("Launching server `{}` on `{}`", args.name, args.addr);
+    println!("Launching server `{}` on `{}`", args.name, args.full_addr);
 
     let (shutdown_tx, _): (
         broadcast::Sender<ShutdownMessage>,
@@ -46,7 +46,7 @@ async fn main() -> Result<(), MainErr> {
 
 fn get_client_listener(
     shutdown_tx: broadcast::Sender<ShutdownMessage>,
-    args: Args,
+    args: args::ParsedArgs,
 ) -> task::JoinHandle<io::Result<()>> {
     tokio::spawn(async move {
         let (global_oper_tx, _): (
@@ -55,7 +55,7 @@ fn get_client_listener(
         ) = broadcast::channel(conf::GLOBAL_HANDLER_OP_LIMIT);
         let mut accepter_shutdown_rx = shutdown_tx.subscribe();
         // TODO make address configurable
-        let listener = TcpListener::bind(args.addr).await?;
+        let listener = TcpListener::bind(args.full_addr.clone()).await?;
         println!(
             "Started listening on {:?}, join this server with code {:?}",
             listener.local_addr().unwrap().to_string(),

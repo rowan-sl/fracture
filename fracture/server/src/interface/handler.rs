@@ -20,7 +20,7 @@ pub async fn handle_client(
     addr: std::net::SocketAddr,
     shutdown_sender: &Sender<ShutdownMessage>,
     global_handler_channel: Sender<GlobalHandlerOperation>,
-    args: args::Args,
+    args: args::ParsedArgs,
 ) -> task::JoinHandle<()> {
     let mut client_shutdown_channel = shutdown_sender.subscribe(); //make shure to like and
     tokio::spawn(async move {
