@@ -1,6 +1,8 @@
+use std::sync::mpsc::{Receiver as MPSCReceiver, Sender as MPSCSender};
+
 use iced::{Align, Element, Row, Text};
 
-use crate::GUIMessage;
+use crate::ui::types::GUIMessage;
 
 pub mod stati {
     use fracture_core::msg;
@@ -52,7 +54,6 @@ pub mod stati {
 pub trait ChatViewable<T> {
     fn view(&mut self) -> Element<T>;
 }
-
 
 #[derive(Clone, Debug)]
 pub struct ChatMessage {
@@ -119,9 +120,7 @@ pub struct RawMessage {
 
 impl RawMessage {
     pub fn new(text: String) -> Self {
-        Self {
-            text
-        }
+        Self { text }
     }
 }
 
@@ -175,3 +174,17 @@ pub struct ServerInfo {
 
 #[derive(Clone, Debug)]
 pub struct ShutdownMessage {}
+
+#[derive(Debug, Clone)]
+pub enum CommMessage {
+    //GUI -> Comm
+    SendChat(ChatMessage),
+    //Comm -> GUI
+    HandleChat(ChatMessage),
+    RawMessage(RawMessage),
+}
+
+pub struct CommChannels {
+    pub sending: MPSCSender<CommMessage>,
+    pub receiving: MPSCReceiver<CommMessage>,
+}

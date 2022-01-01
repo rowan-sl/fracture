@@ -215,7 +215,7 @@ impl Client {
                             _ => {
                                 self.incoming.add(msg.clone()).unwrap();
                                 Unexpected(msg)
-                            },
+                            }
                         }
                     }
                     Err(_) => Noop,

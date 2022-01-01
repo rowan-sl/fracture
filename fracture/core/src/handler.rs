@@ -1,11 +1,21 @@
 #[derive(Clone, Debug)]
 pub enum GlobalHandlerOperation {
-    MsgAll { msg: crate::msg::Message },
+    MsgAll {
+        msg: crate::msg::Message,
+    },
 
     // no handler should produce these, they are produced by the clients wrapper (server only)
-    ClientDisconnect { uuid: uuid::Uuid, name: Option<String> },
-    ClientConnect { uuid: uuid::Uuid },
-    ClientNamed { uuid: uuid::Uuid, name: String },
+    ClientDisconnect {
+        uuid: uuid::Uuid,
+        name: Option<String>,
+    },
+    ClientConnect {
+        uuid: uuid::Uuid,
+    },
+    ClientNamed {
+        uuid: uuid::Uuid,
+        name: String,
+    },
 }
 
 /// Generic trait for createing a message handler.

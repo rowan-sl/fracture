@@ -53,7 +53,7 @@ pub fn get_args() -> Result<Args, ()> {
         )
         .get_matches();
 
-    println!("{:#?}", args);
+    // println!("{:#?}", args);
 
     let addr = match (args.value_of("code"), args.value_of("addr")) {
         (None, Some(addr)) => {

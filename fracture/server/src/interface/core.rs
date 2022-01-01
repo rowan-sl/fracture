@@ -262,7 +262,12 @@ impl ClientInterface {
                                 "Client named itself and completed auth: {:#?}",
                                 self.name().unwrap()
                             );
-                            let _ = self.global_handler_tx.send( GlobalHandlerOperation::ClientNamed { uuid: self.uuid(), name: self.name().unwrap() } );
+                            let _ =
+                                self.global_handler_tx
+                                    .send(GlobalHandlerOperation::ClientNamed {
+                                        uuid: self.uuid(),
+                                        name: self.name().unwrap(),
+                                    });
                             self.state = InterfaceState::RecevedConnectMessage;
                             return stati::UpdateStatus::Sucsess;
                         }
