@@ -11,13 +11,13 @@ use serde::{Serialize, Deserialize};
 /// this should always be a valid u16
 const DEFAULT_PORT: &str = "56282";
 
-const ABOUT: &str = "A disruptively terrible chat app that cracks terrible jokes";
+const ABOUT: &str = "A disruptively terrible chat app that cracks bad jokes";
 
 const AUTHOR: &str = "Rowan S-L <rowan.with.cats@gmail.com>";
 
 const VERSION: &str = clap::crate_version!();
 
-const NAME: &str = "Fracture (Server)";
+const NAME: &str = "fracture-server";
 
 #[derive(Clone, Parser, Debug)]
 #[clap(name = NAME, about = ABOUT, version = VERSION, author = AUTHOR)]
@@ -30,14 +30,17 @@ pub struct CLI {
 pub enum Subcommands {
     Launch {
         #[clap(short, long)]
+        #[clap(help = "the name of the server, as shown when connecting to it by the client")]
         #[clap(setting(ArgSettings::Required))]
         #[clap(setting(ArgSettings::TakesValue))]
         name: String,
         #[clap(short, long)]
+        #[clap(help = "the address to host the server on. this should be your computers address")]
         #[clap(setting(ArgSettings::Required))]
         #[clap(setting(ArgSettings::TakesValue))]
         addr: String,
         #[clap(short, long, default_value = DEFAULT_PORT)]
+        #[clap(help = "the port to host the server on. leave blank for the default port (56282) or `0` for the OS to chose a port")]
         #[clap(setting(ArgSettings::TakesValue))]
         port: String,
         #[clap(short, long, help = "save the current args to a config file and exit.", parse(from_os_str))]
@@ -46,6 +49,7 @@ pub enum Subcommands {
 
     FromConfig {
         #[clap(required = true, parse(from_os_str))]
+        #[clap(help = "the filepath to load the configuration from")]
         conf: PathBuf
     }
 }
