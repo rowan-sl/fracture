@@ -1,8 +1,9 @@
-mod args;
+mod argparser;
 mod handlers;
 mod interface;
-
 use fracture_config::server as conf;
+
+use log::{debug, error, info};
 
 use tokio::{io, net::TcpListener, sync::broadcast, task};
 
@@ -14,22 +15,32 @@ use interface::{handler::handle_client, handler::ShutdownMessage};
 
 #[derive(Debug)]
 enum MainErr {
-    ArgsError(args::GetArgsError),
+    ArgsError(argparser::GetArgsError),
 }
 
-impl From<args::GetArgsError> for MainErr {
-    fn from(item: args::GetArgsError) -> Self {
+impl From<argparser::GetArgsError> for MainErr {
+    fn from(item: argparser::GetArgsError) -> Self {
         Self::ArgsError(item)
     }
 }
 
 #[tokio::main]
 async fn main() -> Result<(), MainErr> {
-    let args = match args::get_args() {
+    let logger_env = env_logger::Env::default()
+    .filter("FRACTURE_LOG_LEVEL")
+    .write_style("FRACTURE_LOG_STYLE");
+
+    env_logger::Builder::from_env(logger_env)
+        // .filter_level(args.level)
+        .init();
+
+    info!("Fracture Startup");
+
+    let args = match argparser::get_args() {
         Ok(a) => a,
         Err(err) => {
             match err {
-                args::GetArgsError::Exit => {return Ok(())}
+                argparser::GetArgsError::Exit => {return Ok(())}
                 other => {return Err(other.into())}
             }
         }
@@ -54,7 +65,7 @@ async fn main() -> Result<(), MainErr> {
 
 fn get_client_listener(
     shutdown_tx: broadcast::Sender<ShutdownMessage>,
-    args: args::ParsedArgs,
+    args: argparser::ParsedArgs,
 ) -> task::JoinHandle<io::Result<()>> {
     tokio::spawn(async move {
         let (global_oper_tx, _): (

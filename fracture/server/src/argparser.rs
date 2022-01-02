@@ -13,6 +13,9 @@ const DEFAULT_PORT: &str = "56282";
 
 const ABOUT: &str = "A disruptively terrible chat app that cracks bad jokes";
 
+/// Shown when you do -h
+const AFTER_HELP: &str = "NOTES: this uses the `env_logger` crate. to change the log level, set the environment variable FRACTURE_LOG_LEVEL";
+
 const AUTHOR: &str = "Rowan S-L <rowan.with.cats@gmail.com>";
 
 const VERSION: &str = clap::crate_version!();
@@ -20,7 +23,7 @@ const VERSION: &str = clap::crate_version!();
 const NAME: &str = "fracture-server";
 
 #[derive(Clone, Parser, Debug)]
-#[clap(name = NAME, about = ABOUT, version = VERSION, author = AUTHOR)]
+#[clap(name = NAME, about = ABOUT, version = VERSION, author = AUTHOR, after_help = AFTER_HELP)]
 pub struct CLI {
     #[clap(subcommand)]
     command: Subcommands
