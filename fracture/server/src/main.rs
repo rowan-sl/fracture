@@ -14,18 +14,26 @@ use interface::{handler::handle_client, handler::ShutdownMessage};
 
 #[derive(Debug)]
 enum MainErr {
-    ArgsError(args::ParserError),
+    ArgsError(args::GetArgsError),
 }
 
-impl From<args::ParserError> for MainErr {
-    fn from(item: args::ParserError) -> Self {
+impl From<args::GetArgsError> for MainErr {
+    fn from(item: args::GetArgsError) -> Self {
         Self::ArgsError(item)
     }
 }
 
 #[tokio::main]
 async fn main() -> Result<(), MainErr> {
-    let args = args::ParsedArgs::get()?;
+    let args = match args::get_args() {
+        Ok(a) => a,
+        Err(err) => {
+            match err {
+                args::GetArgsError::Exit => {return Ok(())}
+                other => {return Err(other.into())}
+            }
+        }
+    };
 
     println!("Launching server `{}` on `{}`", args.name, args.full_addr);
 
