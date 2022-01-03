@@ -4,17 +4,24 @@ use std::io::prelude::*;
 use std::num::ParseIntError;
 use std::path::PathBuf;
 
+// ! note to self: do not use logging here as it is before the logger is initialized
+
 // use clap::{App, Arg};
 use clap::{Parser, ArgSettings, Subcommand};
 use serde::{Serialize, Deserialize};
 
+
 /// this should always be a valid u16
 const DEFAULT_PORT: &str = "56282";
+
+const DEFAULT_LOGGER_LEVEL: &str = "info";
+
+const DEFAULT_LOGGER_COLORMODE: &str = "auto";//auto, never, or always
 
 const ABOUT: &str = "A disruptively terrible chat app that cracks bad jokes";
 
 /// Shown when you do -h
-const AFTER_HELP: &str = "NOTES: this uses the `env_logger` crate. to change the log level, set the environment variable FRACTURE_LOG_LEVEL";
+// const AFTER_HELP: &str = "NOTES: this uses the `env_logger` crate. to change the log level, set the environment variable FRACTURE_LOG_LEVEL";
 
 const AUTHOR: &str = "Rowan S-L <rowan.with.cats@gmail.com>";
 
@@ -23,7 +30,7 @@ const VERSION: &str = clap::crate_version!();
 const NAME: &str = "fracture-server";
 
 #[derive(Clone, Parser, Debug)]
-#[clap(name = NAME, about = ABOUT, version = VERSION, author = AUTHOR, after_help = AFTER_HELP)]
+#[clap(name = NAME, about = ABOUT, version = VERSION, author = AUTHOR)]
 pub struct CLI {
     #[clap(subcommand)]
     command: Subcommands
@@ -37,15 +44,28 @@ pub enum Subcommands {
         #[clap(setting(ArgSettings::Required))]
         #[clap(setting(ArgSettings::TakesValue))]
         name: String,
+
         #[clap(short, long)]
         #[clap(help = "the address to host the server on. this should be your computers address")]
         #[clap(setting(ArgSettings::Required))]
         #[clap(setting(ArgSettings::TakesValue))]
         addr: String,
+
         #[clap(short, long, default_value = DEFAULT_PORT)]
         #[clap(help = "the port to host the server on. leave blank for the default port (56282) or `0` for the OS to chose a port")]
         #[clap(setting(ArgSettings::TakesValue))]
         port: String,
+
+        #[clap(short = 'L', long, default_value = DEFAULT_LOGGER_LEVEL)]
+        #[clap(help = "logging level, can be one of error, warn, info, debug, trace. for more details see the clap documentation")]
+        #[clap(setting(ArgSettings::TakesValue))]
+        logger_level: String,
+
+        #[clap(short = 'S', long, default_value = DEFAULT_LOGGER_COLORMODE)]
+        #[clap(help = "color settings for logging. can be auto (color when supported), never (no color), or always (color even if it is unsuported). for more details see the clap documentation")]
+        #[clap(setting(ArgSettings::TakesValue))]
+        logger_colormode: String,
+
         #[clap(short, long, help = "save the current args to a config file and exit.", parse(from_os_str))]
         save: Option<PathBuf>,
     },
@@ -79,6 +99,8 @@ impl From<ParseIntError> for ParserErr {
 pub struct ParsedArgs {
     pub name: String,
     pub full_addr: SocketAddrV4,
+    pub log_style: String,
+    pub log_level: String,
 }
 
 impl TryFrom<SemiParsedArgs> for ParsedArgs {
@@ -87,11 +109,13 @@ impl TryFrom<SemiParsedArgs> for ParsedArgs {
     /// Converts to ParsedArgs, failing if if the variant is `SemiParsedArgs::LoadLaunch`
     fn try_from(value: SemiParsedArgs) -> Result<Self, Self::Error> {
         match value {
-            SemiParsedArgs::Launch {name, addr, save: _} => {
+            SemiParsedArgs::Launch {name, addr, log_level, log_style, save: _} => {
                 Ok(
                     ParsedArgs {
                         name,
                         full_addr: addr,
+                        log_style,
+                        log_level
                     }
                 )
             }
@@ -107,6 +131,8 @@ pub enum SemiParsedArgs {
     Launch {
         name: String,
         addr: SocketAddrV4,
+        log_level: String,//parsed later
+        log_style: String,//also parsed later
         save: Option<PathBuf>,
     },
     LoadLaunch {
@@ -119,7 +145,7 @@ impl TryFrom<CLI> for SemiParsedArgs {
 
     fn try_from(args: CLI) -> Result<Self, Self::Error> {
         match args.command {
-            Subcommands::Launch {name, addr, port, save} => {
+            Subcommands::Launch {name, addr, port, logger_colormode, logger_level, save} => {
                 let parsed_addr = addr.parse::<Ipv4Addr>()?;
                 let parsed_port = port.parse::<u16>()?;
                 Ok(
@@ -127,6 +153,8 @@ impl TryFrom<CLI> for SemiParsedArgs {
                         name,
                         addr: SocketAddrV4::new(parsed_addr, parsed_port),
                         save,
+                        log_level: logger_level,
+                        log_style: logger_colormode,
                     }
                 )
             }
@@ -147,6 +175,8 @@ impl TryFrom<CLI> for SemiParsedArgs {
 pub struct Configuration {
     pub server_name: String,
     pub address: SocketAddrV4,
+    pub log_level: String,//parsed later
+    pub log_style: String,//also parsed later
 }
 
 impl From<ParsedArgs> for Configuration {
@@ -154,6 +184,8 @@ impl From<ParsedArgs> for Configuration {
         Self {
             server_name: args.name,
             address: args.full_addr,
+            log_level: args.log_level,
+            log_style: args.log_style,
         }
     }
 }
@@ -163,6 +195,8 @@ impl From<Configuration> for ParsedArgs {
         Self {
             name: conf.server_name,
             full_addr: conf.address,
+            log_level: conf.log_level,
+            log_style: conf.log_style,
         }
     }
 }
@@ -225,12 +259,14 @@ pub fn get_args() -> Result<ParsedArgs, GetArgsError> {
         }
     };
     let args = match semi_parsed {
-        SemiParsedArgs::Launch {name, addr, save} => {
+        SemiParsedArgs::Launch {name, addr, log_level, log_style, save} => {
             match save {
                 None => {
                     ParsedArgs {
                         name,
                         full_addr: addr,
+                        log_level,
+                        log_style,
                     }
                 }
                 Some(path) => {
@@ -248,6 +284,8 @@ pub fn get_args() -> Result<ParsedArgs, GetArgsError> {
                     let config: Configuration = ParsedArgs {
                         name,
                         full_addr: addr,
+                        log_level,
+                        log_style,
                     }.into();
                     let serialize_res: Result<String, serde_json::Error> = config.try_into();
                     let json_config = match serialize_res {

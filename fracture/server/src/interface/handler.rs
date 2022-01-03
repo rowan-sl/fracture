@@ -1,3 +1,6 @@
+#[allow(unused_imports)]
+use log::{trace, debug, info, warn, error};
+
 use tokio::net::TcpStream;
 use tokio::sync::broadcast::Sender;
 use tokio::task;
@@ -30,7 +33,7 @@ pub async fn handle_client(
             get_default(),
             global_handler_channel.clone(),
         );
-        println!(
+        info!(
             "Connected to {:?}, reported ip {:?}",
             addr,
             interface.get_client_addr().unwrap()
@@ -38,13 +41,13 @@ pub async fn handle_client(
         let _ = global_handler_channel.send(GlobalHandlerOperation::ClientConnect {
             uuid: interface.uuid(),
         });
-        println!("client ID for {:?} is {:?}", addr, interface.uuid());
+        debug!("client ID for {:?} is {:?}", addr, interface.uuid());
         loop {
             tokio::select! {
                 stat = interface.update_read() => {
                     match stat {
                         stati::UpdateReadStatus::Disconnected => {
-                            println!("{:?} disconnected", addr);
+                            info!("{:?} disconnected", addr);
                             interface.close(String::from(""), None).await;// do not notify the client of disconnecting, as it is already disconnected
                             break;
                         },
@@ -55,13 +58,13 @@ pub async fn handle_client(
                                 err => {
                                     match err {
                                         DeserializationError(bincode_err) => {
-                                            eprintln!("Recevied malformed or incomplete message from client! (could not deserialize) error folows:\n{:#?}", bincode_err);
+                                            error!("Recevied malformed or incomplete message from client! (could not deserialize) error folows:\n{:#?}", bincode_err);
                                         }
                                         HeaderParser(parser_err) => {
-                                            eprintln!("Recevied malformed or incomplete message from client! (header parser error) error folows:\n{:#?}", parser_err);
+                                            error!("Recevied malformed or incomplete message from client! (header parser error) error folows:\n{:#?}", parser_err);
                                         }
                                         ReadError(read_err) => {
-                                            eprintln!("Error while reading message! (read error) error folows:\n{:#?}", read_err);
+                                            error!("Error while reading message! (read error) error folows:\n{:#?}", read_err);
                                         }
                                         Disconnected => panic!("wtf rust")
                                     }
@@ -69,7 +72,7 @@ pub async fn handle_client(
                             }
                         },
                         stati::UpdateReadStatus::GracefullDisconnect => {
-                            println!("{:?} gracefully disconnected", addr);
+                            info!("{:?} gracefully disconnected", addr);
                             interface.close(String::from(""), Some(fracture_core::msg::types::ServerDisconnectReason::ClientRequestedDisconnect)).await;
                             break;
                         },
@@ -80,20 +83,20 @@ pub async fn handle_client(
                     match interface.update().await {
                         stati::UpdateStatus::ClientKicked (reason) => {
                             //TODO this should actualy never happen, so remove it or implement it
-                            eprintln!("Kicked client for invalid connection!");
+                            info!("Kicked client for invalid connection!");
                             interface.close(reason, Some(fracture_core::msg::types::ServerDisconnectReason::InvalidConnectionSequence)).await;
                             break;
                         }
                         stati::UpdateStatus::Unexpected (msg) => {
                             //TODO make this a error
-                            eprintln!("Unexpected message {:#?}", msg);
+                            error!("Unexpected message {:#?}", msg);
                         }
                         stati::UpdateStatus::Unhandled (msg) => {
                             //TODO make this a error too
-                            eprintln!("Unhandled message:\n{:#?}", msg);
+                            error!("Unhandled message:\n{:#?}", msg);
                         }
                         stati::UpdateStatus::SendError(err) => {
-                            eprintln!("Send error: {:#?}", err);
+                            error!("Send error: {:#?}", err);
                             interface.close(String::from(""), None).await;
                             break;
                         }
@@ -107,7 +110,7 @@ pub async fn handle_client(
                                     Some(unexpected_op) => {
                                         // a message was not explicitly pased on or dealt with
                                         //TODO make this a error
-                                        println!("Unhandled operation:\n{:#?}", unexpected_op);
+                                        error!("Unhandled operation:\n{:#?}", unexpected_op);
                                     }
                                     None => {
                                         break;
@@ -128,7 +131,7 @@ pub async fn handle_client(
                         match err {
                             stat::SendStatus::Failure (ioerr) => {
                                 if ioerr.kind() == std::io::ErrorKind::NotConnected {
-                                    println!("{:?} disconnected", addr);
+                                    info!("{:?} disconnected", addr);
                                     interface.close(String::from(""), None).await;// do not notify the client of disconnecting, as it is already disconnected
                                 } else {
                                     panic!("Error while sending messages:\n{:#?}", ioerr);
@@ -143,7 +146,7 @@ pub async fn handle_client(
                     }
                 }
                 smsg = client_shutdown_channel.recv() => {
-                    println!("Closing connection to {:?}", addr);
+                    info!("Closing connection to {:?}", addr);
                     interface.close(smsg.unwrap().reason, None).await;
                     break;
                 }
@@ -155,6 +158,6 @@ pub async fn handle_client(
             name: interface.name(),
         });
 
-        println!("Connection to {:?} closed", addr);
+        info!("Connection to {:?} closed", addr);
     })
 }

@@ -3,7 +3,8 @@ mod handlers;
 mod interface;
 use fracture_config::server as conf;
 
-use log::{debug, error, info};
+#[allow(unused_imports)]
+use log::{trace, debug, info, warn, error};
 
 use tokio::{io, net::TcpListener, sync::broadcast, task};
 
@@ -26,16 +27,6 @@ impl From<argparser::GetArgsError> for MainErr {
 
 #[tokio::main]
 async fn main() -> Result<(), MainErr> {
-    let logger_env = env_logger::Env::default()
-    .filter("FRACTURE_LOG_LEVEL")
-    .write_style("FRACTURE_LOG_STYLE");
-
-    env_logger::Builder::from_env(logger_env)
-        // .filter_level(args.level)
-        .init();
-
-    info!("Fracture Startup");
-
     let args = match argparser::get_args() {
         Ok(a) => a,
         Err(err) => {
@@ -46,7 +37,14 @@ async fn main() -> Result<(), MainErr> {
         }
     };
 
-    println!("Launching server `{}` on `{}`", args.name, args.full_addr);
+    let mut logger_builder = env_logger::Builder::new();
+    logger_builder.parse_filters(&args.log_level);
+    logger_builder.parse_write_style(&args.log_style);
+    logger_builder.init();
+
+    info!("Fracture Startup");
+    debug!("Running with logging level {}", args.log_level);
+    info!("Launching server `{}` on `{}`", args.name, args.full_addr);
 
     let (shutdown_tx, _): (
         broadcast::Sender<ShutdownMessage>,
@@ -75,7 +73,7 @@ fn get_client_listener(
         let mut accepter_shutdown_rx = shutdown_tx.subscribe();
         // TODO make address configurable
         let listener = TcpListener::bind(args.full_addr.clone()).await?;
-        println!(
+        info!(
             "Started listening on {:?}, join this server with code {:?}",
             listener.local_addr().unwrap().to_string(),
             ipencoding::ip_to_code(match listener.local_addr().unwrap() {
@@ -98,7 +96,7 @@ fn get_client_listener(
                             tasks.push(handle_client(socket, addr, &shutdown_tx, global_oper_tx.clone(), args.clone()).await);
                         },
                         Err(err) => {
-                            println!("Error while accepting a client {:?}", err);
+                            error!("Error while accepting a client {:?}", err);
                         }
                     };
                 }
@@ -106,10 +104,10 @@ fn get_client_listener(
                     for task in &mut tasks {
                         let res = task.await;
                         if res.is_err() {
-                            eprintln!("Connection handler closed with error {:#?}", res);
+                            error!("Connection handler closed with error {:#?}", res);
                         }
                     }
-                    println!("Closed all client interfaces");
+                    info!("Closed all client interfaces");
                     break;
                 }
             };
@@ -124,7 +122,7 @@ fn get_ctrlc_listener(
 ) -> task::JoinHandle<io::Result<()>> {
     tokio::spawn(async move {
         let sig_res = tokio::signal::ctrl_c().await;
-        println!("\nRecieved ctrl+c, shutting down");
+        info!("Recieved ctrl+c, shutting down");
         if ctrlc_transmitter.receiver_count() != 0 {
             ctrlc_transmitter
                 .send(ShutdownMessage {

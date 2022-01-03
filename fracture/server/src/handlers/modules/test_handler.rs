@@ -1,3 +1,6 @@
+#[allow(unused_imports)]
+use log::{trace, debug, info, warn, error};
+
 use crate::handlers::imports::{
     ClientInfo, GlobalHandlerOperation, HandlerOperation, MessageHandler, ServerClientInfo,
     ServerMessageHandler,
@@ -21,7 +24,7 @@ impl MessageHandler for TestHandler {
 
     fn handle(&mut self, msg: &fracture_core::msg::Message) -> bool {
         if let TestMessage {} = msg.data {
-            println!("Received test message");
+            debug!("Received test message");
             self.pending_global.push(GlobalHandlerOperation::MsgAll {
                 msg: fracture_core::msg::Message {
                     data: fracture_core::msg::MessageVarient::TestMessageResponse {},

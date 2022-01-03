@@ -1,3 +1,6 @@
+#[allow(unused_imports)]
+use log::{trace, debug, info, warn, error};
+
 use crate::handlers::imports::{
     ClientInfo, GlobalHandlerOperation, HandlerOperation, MessageHandler, ServerClientInfo,
     ServerMessageHandler,
@@ -21,7 +24,7 @@ impl MessageHandler for IncomingChatHandler {
 
     fn handle(&mut self, msg: &fracture_core::msg::Message) -> bool {
         if let ClientSendChat { content } = msg.data.clone() {
-            println!("Received message {}", content);
+            debug!("Received message {}", content);
             let dat = self.client_data.clone().unwrap();
             self.pending_global.push(GlobalHandlerOperation::MsgAll {
                 msg: fracture_core::msg::Message {

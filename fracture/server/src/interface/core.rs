@@ -5,10 +5,14 @@
 use queues::queue;
 use queues::IsQueue;
 use queues::Queue;
+
 use tokio::io::AsyncWriteExt;
 use tokio::net::TcpStream;
 use tokio::sync::broadcast;
 use tokio::sync::broadcast::error::TryRecvError;
+
+#[allow(unused_imports)]
+use log::{trace, debug, info, warn, error};
 
 use fracture_core::handler::GlobalHandlerOperation;
 use fracture_core::handler::ServerMessageHandler;
@@ -154,13 +158,13 @@ impl ClientInterface {
                 stat::SendStatus::Failure(err) => {
                     match err.kind() {
                         std::io::ErrorKind::NotConnected => {
-                            println!(
+                            error!(
                                 "During shutdown: Expected to be connected, but was not!\n{:#?}",
                                 err
                             );
                         }
                         _ => {
-                            println!("Error whilst sending shutdown msg!\n{:#?}", err);
+                            error!("Error whilst sending shutdown msg!\n{:#?}", err);
                         }
                     };
                 }
@@ -173,7 +177,7 @@ impl ClientInterface {
             Err(err) => {
                 //Socket is already shutdown
                 if err.kind() != std::io::ErrorKind::NotConnected {
-                    println!("Error whilst closing connection: {:#?}", err);
+                    error!("Error whilst closing connection: {:#?}", err);
                 }
             }
         };
@@ -258,7 +262,7 @@ impl ClientInterface {
                         MessageVarient::ConnectMessage { name } => {
                             //TODO make this actulay handle users (with the user state handler) (mabey later)
                             self.client_name = Some(name);
-                            println!(
+                            debug!(
                                 "Client named itself and completed auth: {:#?}",
                                 self.name().unwrap()
                             );
@@ -272,7 +276,7 @@ impl ClientInterface {
                             return stati::UpdateStatus::Sucsess;
                         }
                         other => {
-                            println!(
+                            error!(
                                 "Recieved {:#?} from client {:?} instead of connect message!",
                                 other,
                                 self.get_client_addr()
@@ -375,7 +379,7 @@ impl ClientInterface {
                     match self.global_handler_tx.send(op) {
                         Ok(_) => {}
                         Err(err) => {
-                            eprintln!("No one cared: {:?}", err);
+                            error!("No one cared: {:?}", err);
                         }
                     }
                 }
