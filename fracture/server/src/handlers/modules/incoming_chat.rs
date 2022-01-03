@@ -24,7 +24,7 @@ impl MessageHandler for IncomingChatHandler {
 
     fn handle(&mut self, msg: &fracture_core::msg::Message) -> bool {
         if let ClientSendChat { content } = msg.data.clone() {
-            debug!("Received message {}", content);
+            trace!("Received message {}", content);
             let dat = self.client_data.clone().unwrap();
             self.pending_global.push(GlobalHandlerOperation::MsgAll {
                 msg: fracture_core::msg::Message {
