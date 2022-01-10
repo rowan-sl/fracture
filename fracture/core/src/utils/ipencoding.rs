@@ -1,3 +1,5 @@
+use thiserror::Error;
+
 /// Converts a number from 0-25 to a alphabet letter
 const fn int2letter(num: u128) -> Result<char, u128> {
     let conv = match num {
@@ -87,7 +89,21 @@ fn num_to_code(mut num: u128) -> Result<String, u128> {
     Ok(res.chars().rev().collect::<String>())
 }
 
-fn code_to_num(mut code: String) -> Result<u128, char> {
+#[derive(Error, Debug)]
+#[error("Failed to convert code: invalid char {bad_char}")]
+pub struct CodeToNumErr {
+    bad_char: char
+}
+
+impl From<char> for CodeToNumErr {
+    fn from(ch: char) -> Self {
+        Self {
+            bad_char: ch
+        }
+    }
+}
+
+fn code_to_num(mut code: String) -> Result<u128, CodeToNumErr> {
     let mut res: u128 = 0;
     code.make_ascii_uppercase();
     for ch in code.chars() {
@@ -154,21 +170,12 @@ pub fn code_to_ip(code: String) -> std::net::SocketAddrV4 {
     )
 }
 
+#[derive(Error, Debug)]
 pub enum CodeToIpError {
-    Conversion(std::num::TryFromIntError),
-    Char(char),
-}
-
-impl From<char> for CodeToIpError {
-    fn from(item: char) -> Self {
-        CodeToIpError::Char(item)
-    }
-}
-
-impl From<std::num::TryFromIntError> for CodeToIpError {
-    fn from(item: std::num::TryFromIntError) -> Self {
-        CodeToIpError::Conversion(item)
-    }
+    #[error("Conversion from decoded number to u8/u16 failed: {0}")]
+    Conversion(#[from] std::num::TryFromIntError),
+    #[error("Could not decode charecter {0}")]
+    Char(#[from] CodeToNumErr),
 }
 
 /// Converts a letter code into a socket addr
