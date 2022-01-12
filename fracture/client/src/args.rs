@@ -1,8 +1,21 @@
 use std::net::SocketAddrV4;
 
-use clap::{App, Arg, ArgGroup};
+use clap::{App, Arg, ArgGroup, Parser};
 
 use fracture_core::utils::ipencoding::code_to_ip_safe;
+
+const NAME: &str = "Fracture";
+const VERSION: &str = clap::crate_description!();
+const AUTHOR: &str = clap::crate_authors!();
+const ABOUT: &str = "Fracture -- A disruptively terrible chat app that cracks terrible jokes";
+const DEFAULT_LOGGER_LEVEL: &str = "info";
+const DEFAULT_LOGGER_COLORMODE: &str = "auto";//auto, never, or always
+
+#[derive(Clone, Parser, Debug)]
+#[clap(name = NAME, about = ABOUT, version = VERSION, author = AUTHOR)]
+pub struct NewArgs {
+    
+}
 
 pub struct Args {
     pub name: String,
