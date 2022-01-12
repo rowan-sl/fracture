@@ -805,7 +805,7 @@ dependencies = [
 
 [[package]]
 name = "fracture-client"
-version = "3.0.0"
+version = "3.0.1"
 dependencies = [
  "bincode",
  "bytes",
