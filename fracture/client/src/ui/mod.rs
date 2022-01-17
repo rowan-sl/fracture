@@ -53,7 +53,7 @@ impl Application for FractureClientGUI {
     }
 
     fn title(&self) -> String {
-        "Fracture".to_string()
+        format!("{} - Fracture v{}", self.username, clap::crate_version!())
     }
 
     fn update(
@@ -123,13 +123,18 @@ fn get_main_ui(
                 Row::new()
                     .padding(0)
                     .spacing(0)
-                    .align_items(Align::Start)
+                    .align_items(Align::Center)
                     .width(Length::Fill)
                     .push(
                         Button::new(&mut this.close_button, Text::new("close"))
                             .on_press(GUIMessage::Close)
                             .height(Length::Shrink)
                             .style(style::menubar::CloseButton),
+                    )
+                    .push(Space::with_width(Length::Units(5)))
+                    .push(
+                        Text::new(format!("{}", this.username))
+                        .vertical_alignment(iced::VerticalAlignment::Center)
                     ),
             )
             .width(Length::Fill)

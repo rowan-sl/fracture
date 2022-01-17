@@ -22,9 +22,16 @@ use fracture_core::SocketUtils;
 
 pub mod stati {
     use fracture_core::stat;
+
+    #[derive(thiserror::Error, Debug)]
+    #[error("Send error: {0}")]
+    pub struct MultiSendError ( #[from] pub stat::SendError);
+
     pub enum MultiSendStatus {
-        Worked { amnt: u32, bytes: u128 },
-        Failure(stat::SendStatus),
+        Sent {
+            amnt: u32,
+            bytes: u128
+        },
         NoTask,
     }
 
@@ -155,21 +162,25 @@ impl ClientInterface {
                 })
                 .await
             {
-                stat::SendStatus::Failure(err) => {
-                    match err.kind() {
-                        std::io::ErrorKind::NotConnected => {
-                            error!(
-                                "During shutdown: Expected to be connected, but was not!\n{:#?}",
-                                err
-                            );
+                Ok(_) => {}
+                Err(e) => {
+                    match e {
+                        stat::SendError::Failure(err) => {
+                            match err.kind() {
+                                std::io::ErrorKind::NotConnected => {
+                                    error!(
+                                        "During shutdown: Expected to be connected, but was not!\n{:#?}",
+                                        err
+                                    );
+                                }
+                                _ => {
+                                    error!("Error whilst sending shutdown msg!\n{:#?}", err);
+                                }
+                            };
                         }
-                        _ => {
-                            error!("Error whilst sending shutdown msg!\n{:#?}", err);
-                        }
-                    };
+                        stat::SendError::SeriError(_) => panic!("Could not serialize shutdown msg"),
+                    }
                 }
-                stat::SendStatus::SeriError(_) => panic!("Could not serialize shutdown msg"),
-                _ => {}
             };
         }
         match self.socket.shutdown().await {
@@ -189,42 +200,50 @@ impl ClientInterface {
     }
 
     /// Send one message from the queue
-    async fn send_queued_message(&mut self) -> stat::SendStatus {
+    async fn send_queued_message(&mut self) -> Result<stat::SendStatus, stat::SendError> {
         let value = self.to_send.remove();
         match value {
             Ok(v) => self.send_message(v).await,
-            Err(_err) => stat::SendStatus::NoTask, //Do nothing as there is nothing to do ;)
+            Err(_err) => Ok(stat::SendStatus::NoTask), //Do nothing as there is nothing to do ;)
         }
     }
 
     /// Send all queued messages
     ///
     /// ! THIS IS NOT CANCELATION SAFE!!!!
-    pub async fn send_all_queued(&mut self) -> stati::MultiSendStatus {
+    pub async fn send_all_queued(&mut self) -> Result<stati::MultiSendStatus, stati::MultiSendError> {
         let mut sent = 0;
         let mut sent_bytes = 0;
         loop {
             let res = self.send_queued_message().await;
             match res {
-                stat::SendStatus::NoTask => {
-                    return if sent == 0 {
-                        stati::MultiSendStatus::NoTask
-                    } else {
-                        stati::MultiSendStatus::Worked {
-                            amnt: sent,
-                            bytes: sent_bytes,
+                Ok(s) => {
+                    match s { 
+                        stat::SendStatus::NoTask => {
+                            return if sent == 0 {
+                                Ok(stati::MultiSendStatus::NoTask)
+                            } else {
+                                Ok(stati::MultiSendStatus::Sent {
+                                    amnt: sent,
+                                    bytes: sent_bytes,
+                                })
+                            }
+                        }
+                        stat::SendStatus::Sent(stat) => {
+                            sent += 1;
+                            sent_bytes += stat as u128;
                         }
                     }
                 }
-                stat::SendStatus::Sent(stat) => {
-                    sent += 1;
-                    sent_bytes += stat as u128;
-                }
-                stat::SendStatus::Failure(err) => {
-                    return stati::MultiSendStatus::Failure(stat::SendStatus::Failure(err));
-                }
-                stat::SendStatus::SeriError(err) => {
-                    return stati::MultiSendStatus::Failure(stat::SendStatus::SeriError(err));
+                Err(e) => {
+                    match e {
+                        stat::SendError::Failure(err) => {
+                            return Err(stati::MultiSendError(stat::SendError::Failure(err)));
+                        }
+                        stat::SendError::SeriError(err) => {
+                            return Err(stati::MultiSendError(stat::SendError::SeriError(err)));
+                        }
+                    }
                 }
             }
         }

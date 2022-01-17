@@ -8,6 +8,7 @@ use uuid::Uuid;
 use fracture_core::handler::MessageHandler;
 use fracture_core::msg;
 use fracture_core::stat::SendStatus;
+use fracture_core::stat::SendError;
 use fracture_core::SocketUtils;
 
 use crate::types::{stati, ClientState, HandlerOperation, ServerInfo};
@@ -69,17 +70,21 @@ impl Client {
                     })
                     .await
                 {
-                    SendStatus::Failure(err) => {
-                        match err.kind() {
-                            std::io::ErrorKind::NotConnected => {
-                                println!("During shutdown: Expected to be connected, but was not!\n{:#?}", err);
+                    Err(send_err) => {
+                        match send_err {
+                            SendError::Failure(err) => {
+                                match err.kind() {
+                                    std::io::ErrorKind::NotConnected => {
+                                        println!("During shutdown: Expected to be connected, but was not!\n{:#?}", err);
+                                    }
+                                    _ => {
+                                        println!("Error whilst sending shutdown msg!\n{:#?}", err);
+                                    }
+                                };
                             }
-                            _ => {
-                                println!("Error whilst sending shutdown msg!\n{:#?}", err);
-                            }
-                        };
+                            SendError::SeriError(_) => panic!("Could not serialize shutdown msg"),
+                        }
                     }
-                    SendStatus::SeriError(_) => panic!("Could not serialize shutdown msg"),
                     _ => {}
                 };
             }
@@ -87,42 +92,36 @@ impl Client {
     }
 
     /// Send one message from the queue
-    async fn send_queued_message(&mut self) -> SendStatus {
+    async fn send_queued_message(&mut self) -> Result<SendStatus, fracture_core::stat::SendError> {
         let value = self.outgoing.remove();
         match value {
             Ok(v) => self.send_message(v).await,
-            Err(_err) => SendStatus::NoTask, //Do nothing as there is nothing to do ;)
+            Err(_err) => Ok(SendStatus::NoTask), //Do nothing as there is nothing to do ;)
         }
     }
 
     /// Send all queued messages
     ///
     /// ! THIS IS NOT CANCELATION SAFE!!!!
-    pub async fn send_all_queued(&mut self) -> stati::MultiSendStatus {
+    pub async fn send_all_queued(&mut self) -> Result<stati::MultiSendStatus, stati::MultiSendError> {
         let mut sent = 0;
         let mut sent_bytes = 0;
         loop {
-            let res = self.send_queued_message().await;
+            let res = self.send_queued_message().await?;
             match res {
                 SendStatus::NoTask => {
                     return if sent == 0 {
-                        stati::MultiSendStatus::NoTask
+                        Ok(stati::MultiSendStatus::NoTask)
                     } else {
-                        stati::MultiSendStatus::Worked {
+                        Ok(stati::MultiSendStatus::Worked {
                             amnt: sent,
                             bytes: sent_bytes,
-                        }
+                        })
                     }
                 }
                 SendStatus::Sent(stat) => {
                     sent += 1;
                     sent_bytes += stat as u128;
-                }
-                SendStatus::Failure(err) => {
-                    return stati::MultiSendStatus::Failure(SendStatus::Failure(err));
-                }
-                SendStatus::SeriError(err) => {
-                    return stati::MultiSendStatus::Failure(SendStatus::SeriError(err));
                 }
             }
         }
@@ -135,9 +134,7 @@ impl Client {
     /// Handles the reading message half of updating the client.
     /// for the most part it handles errors that occur in it, but it will return info for some situations,
     /// Like disconnects.
-    ///
-    /// This IS cancelation safe
-    pub async fn update_read(&mut self) -> stati::UpdateReadStatus {
+    pub async fn update_read(&mut self) -> Result<(), stati::UpdateReadError> {
         let read = self.read_msg().await;
         if let Ok(stat) = read {
             if let msg::MessageVarient::ServerForceDisconnect {
@@ -145,20 +142,20 @@ impl Client {
                 close_message,
             } = stat.msg.data
             {
-                stati::UpdateReadStatus::ServerClosed {
+                Err(stati::UpdateReadError::ServerClosed {
                     reason,
                     close_message,
-                }
+                })
             } else {
                 self.incoming.add(stat.msg).unwrap();
-                stati::UpdateReadStatus::Success
+                Ok(())
             }
         } else if let Err(err) = read {
             match err {
                 fracture_core::stat::ReadMessageError::Disconnected => {
-                    stati::UpdateReadStatus::ServerDisconnect
+                    Err(stati::UpdateReadError::ServerDisconnect)
                 }
-                oerr => stati::UpdateReadStatus::ReadError(oerr),
+                oerr => Err(oerr.into()),
             }
         } else {
             panic!("this should never happen, but it apeases the compiler")
@@ -166,8 +163,8 @@ impl Client {
     }
 
     /// Processes incoming messages, and then queues messages for sending
-    pub async fn update(&mut self) -> stati::UpdateStatus {
-        use stati::UpdateStatus::{Noop, Success, Unexpected, Unhandled};
+    pub async fn update(&mut self) -> Result<stati::UpdateStatus, stati::UpdateError> {
+        use stati::{UpdateStatus, UpdateError};
         use ClientState::{Begin, GetHandlerDefaultOps, Hanshake, Ready};
         match &self.state {
             Begin => {
@@ -176,14 +173,20 @@ impl Client {
                     .send_message(fracture_core::common::gen_connect(self.name.clone()))
                     .await
                 {
-                    fracture_core::stat::SendStatus::Sent(_) => {}
-                    err => {
-                        eprintln!("Failed to send connect message:\n{:#?}", err);
-                        return stati::UpdateStatus::SendError(err);
+                    Ok(stat) => {
+                        match stat {
+                            SendStatus::NoTask => unreachable!(),
+                            SendStatus::Sent(_) => {
+                                self.state = Hanshake;
+                                Ok(UpdateStatus::Success)
+                            }
+                        }
                     }
-                };
-                self.state = Hanshake;
-                Success
+                    Err(err) => {
+                        eprintln!("Failed to send connect message:\n{:#?}", err);
+                        Err(UpdateError::SendError(err))
+                    }
+                }
             }
             Hanshake => {
                 // receive server data
@@ -201,7 +204,7 @@ impl Client {
                                     conn_status
                                 {
                                     println!("Connection refused:{}", reason);
-                                    return stati::UpdateStatus::ConnectionRefused;
+                                    return Err(UpdateError::ConnectionRefused);
                                 }
                                 println!("Connected to: {}", server_name);
                                 let real_uuid = Uuid::from_u128(your_uuid);
@@ -210,15 +213,15 @@ impl Client {
                                     name: server_name,
                                 });
                                 self.state = ClientState::GetHandlerDefaultOps;
-                                Success
+                                Ok(UpdateStatus::Success)
                             }
                             _ => {
                                 self.incoming.add(msg.clone()).unwrap();
-                                Unexpected(msg)
+                                Err(UpdateError::Unexpected(msg))
                             }
                         }
                     }
-                    Err(_) => Noop,
+                    Err(_) => Ok(UpdateStatus::Noop)
                 }
             }
             GetHandlerDefaultOps => {
@@ -228,13 +231,13 @@ impl Client {
                     }
                 }
                 self.state = ClientState::Ready;
-                Success
+                Ok(UpdateStatus::Success)
             }
             Ready => {
                 let msg = match self.incoming.remove() {
                     Ok(m) => m,
                     Err(_) => {
-                        return Noop;
+                        return Ok(UpdateStatus::Noop);
                     }
                 };
                 let mut handeld = false;
@@ -246,9 +249,9 @@ impl Client {
                     }
                 }
                 if handeld {
-                    Success
+                    Ok(UpdateStatus::Success)
                 } else {
-                    Unhandled(msg)
+                    Err(UpdateError::Unhandled(msg))
                 }
             }
         }

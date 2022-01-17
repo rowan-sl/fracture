@@ -2,12 +2,20 @@ use tokio::io::AsyncWriteExt;
 use tokio::net::TcpStream;
 
 pub mod stat {
+    use thiserror::Error;
+
     #[derive(Debug)]
     pub enum SendStatus {
         Sent(usize),
         NoTask,
-        Failure(std::io::Error),
-        SeriError(crate::seri::res::SerializationError),
+    }
+
+    #[derive(Error, Debug)]
+    pub enum SendError {
+        #[error("Failed to send message: {0}")]
+        Failure(#[from] std::io::Error),
+        #[error("Failed to serialize message: {0}")]
+        SeriError(#[from] Box<bincode::ErrorKind>),
     }
 
     #[derive(Debug)]
@@ -16,16 +24,22 @@ pub mod stat {
         pub bytes: usize,
     }
 
-    #[derive(Debug)]
+    #[derive(Error, Debug)]
     pub enum ReadMessageError {
+        #[error("Disconnected while writing message!")]
         Disconnected,
+        #[error("Failed to read from socket: {0}")]
         ReadError(std::io::Error),
-        HeaderParser(crate::msg::HeaderParserError),
-        DeserializationError(Box<bincode::ErrorKind>),
+        #[error("Failed to parse msg header: {0}")]
+        HeaderParser(#[from] crate::msg::HeaderParserError),
+        #[error("Failed to deserialize message: {0}")]
+        DeserializationError(#[from] Box<bincode::ErrorKind>),
     }
 }
 
 use stat::{ReadMessageError, ReadMessageStatus, SendStatus};
+
+use self::stat::SendError;
 
 /// Some utils for dealing with sockets on a struct (reading and writing)
 #[async_trait::async_trait]
@@ -60,74 +74,54 @@ pub trait SocketUtils {
                 }
             }
         }
-        let header_r =
-            crate::msg::Header::from_bytes(&crate::seri::vec2bytes(Vec::from(header_buffer)));
-        match header_r {
-            Ok(header) => {
-                let read_amnt = header.size();
-                let mut buffer: Vec<u8> = Vec::with_capacity(read_amnt);
-                let mut read = 0;
-                loop {
-                    //TODO goodbye
-                    drop(sock.readable().await);
-                    match sock.try_read_buf(&mut buffer) {
-                        Ok(0) => {
-                            return Err(ReadMessageError::Disconnected);
+        let header =
+            crate::msg::Header::from_bytes(&crate::seri::vec2bytes(Vec::from(header_buffer)))?;
+        let read_amnt = header.size();
+        let mut buffer: Vec<u8> = Vec::with_capacity(read_amnt);
+        let mut read = 0;
+        loop {
+            //TODO goodbye
+            drop(sock.readable().await);
+            match sock.try_read_buf(&mut buffer) {
+                Ok(0) => {
+                    return Err(ReadMessageError::Disconnected);
+                }
+                Ok(n) => {
+                    read += n;
+                    if read >= read_amnt {
+                        //TODO implement parsing the message
+                        let msg: crate::msg::Message = bincode::deserialize(&buffer[..])?;
+                        if crate::conf::SOCK_DBG {
+                            println!("Receved:\n{:#?}", msg);
                         }
-                        Ok(n) => {
-                            read += n;
-                            if read >= read_amnt {
-                                //TODO implement parsing the message
-                                let deserialized: std::result::Result<
-                                    crate::msg::Message,
-                                    Box<bincode::ErrorKind>,
-                                > = bincode::deserialize(&buffer[..]);
-                                match deserialized {
-                                    Ok(msg) => {
-                                        if crate::conf::SOCK_DBG {
-                                            println!("Receved:\n{:#?}", msg);
-                                        }
-                                        return Ok(ReadMessageStatus {
-                                            msg,
-                                            bytes: buffer.len(),
-                                        });
-                                    }
-                                    Err(err) => {
-                                        return Err(ReadMessageError::DeserializationError(err));
-                                    }
-                                }
-                            }
-                        }
-                        Err(err) => {
-                            if err.kind() == tokio::io::ErrorKind::WouldBlock {
-                                continue;
-                            }
-                            return Err(ReadMessageError::ReadError(err));
-                        }
+                        return Ok(ReadMessageStatus {
+                            msg,
+                            bytes: buffer.len(),
+                        });
                     }
                 }
+                Err(err) => {
+                    if err.kind() == tokio::io::ErrorKind::WouldBlock {
+                        continue;
+                    }
+                    return Err(ReadMessageError::ReadError(err));
+                }
             }
-            Err(err) => Err(ReadMessageError::HeaderParser(err)),
         }
     }
 
-    async fn send_message(&mut self, message: crate::msg::Message) -> SendStatus {
+    async fn send_message(&mut self, message: crate::msg::Message) -> Result<SendStatus, SendError> {
         if crate::conf::SOCK_DBG {
             println!("Sent:\n{:#?}", message);
         }
         let socket = self.get_sock();
-        let serialized_msg_res = crate::seri::serialize(&message);
-        match serialized_msg_res {
-            Ok(mut serialized_msg) => {
-                let wrote_size = serialized_msg.size();
-                let b_data = serialized_msg.into_bytes();
-                let write_status = socket.write_all(&b_data).await;
-                match write_status {
-                    Ok(_) => SendStatus::Sent(wrote_size),
-                    Err(err) => SendStatus::Failure(err),
-                }
-            }
-            Err(err) => SendStatus::SeriError(err),
+        let mut serialized_msg = crate::seri::serialize(&message)?;
+        let wrote_size = serialized_msg.size();
+        let b_data = serialized_msg.into_bytes();
+        let write_status = socket.write_all(&b_data).await;
+        match write_status {
+            Ok(_) => Ok(SendStatus::Sent(wrote_size)),
+            Err(err) => Err(SendError::Failure(err)),
         }
     }
 }

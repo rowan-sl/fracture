@@ -127,9 +127,9 @@ pub async fn handle_client(
                     interface.colloect_send_global_actions();
                     interface.collect_recv_global_actions();
                     interface.execute_global_actions();
-                    if let stati::MultiSendStatus::Failure(err) = interface.send_all_queued().await {
-                        match err {
-                            stat::SendStatus::Failure (ioerr) => {
+                    if let Err(err) = interface.send_all_queued().await {
+                        match err.0 {
+                            stat::SendError::Failure (ioerr) => {
                                 if ioerr.kind() == std::io::ErrorKind::NotConnected {
                                     info!("{:?} disconnected", addr);
                                     interface.close(String::from(""), None).await;// do not notify the client of disconnecting, as it is already disconnected
@@ -138,10 +138,9 @@ pub async fn handle_client(
                                 }
                                 break;
                             }
-                            stat::SendStatus::SeriError (serr) => {
+                            stat::SendError::SeriError (serr) => {
                                 panic!("Could not serialize message:\n{:#?}", serr);
                             }
-                            _ => {}
                         }
                     }
                 }

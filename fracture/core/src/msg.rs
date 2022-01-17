@@ -1,5 +1,7 @@
 use serde::Deserialize;
 use serde::Serialize;
+use bytes::Buf;
+use bytes::BufMut;
 
 pub mod types {
     use super::{Deserialize, Serialize};
@@ -94,14 +96,15 @@ pub struct Message {
     pub data: MessageVarient,
 }
 
-use bytes::Buf;
-use bytes::BufMut;
-
-#[derive(Debug)]
+#[derive(thiserror::Error, Debug)]
 pub enum HeaderParserError {
+    #[error("Invalid header length")]
     InvalidLength,
+    #[error("Invalid header prefix")]
     InvalidPrefix,
+    #[error("Invalid header size")]
     InvalidMsgSize,
+    #[error("Invalid header suffix")]
     InvalidSuffix,
 }
 

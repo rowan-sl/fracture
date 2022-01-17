@@ -8,13 +8,8 @@ pub mod seri {
     use tokio::net::TcpStream;
 
     pub mod res {
+        use thiserror::Error;
         use super::{HeaderParserError, Message};
-
-        #[derive(Debug)]
-        pub enum SerializationError {
-            Generic,
-            BincodeErr(Box<bincode::ErrorKind>),
-        }
 
         #[derive(Debug)]
         pub struct GetMessageResponse {
@@ -22,12 +17,15 @@ pub mod seri {
             pub bytes: usize,
         }
 
-        #[derive(Debug)]
+        #[derive(Error, Debug)]
         pub enum GetMessageError {
+            #[error("Connection closed")]
             Disconnected,
-            ReadError,
-            Error(std::io::Error),
+            #[error("Failed to read from socket: {0}")]
+            ReadError(std::io::Error),
+            #[error("Failed to parse header: {0}")]
             HeaderParser(HeaderParserError),
+            #[error("Failed to deserialize message: {0}")]
             DeserializationError(Box<bincode::ErrorKind>),
         }
     }
@@ -58,18 +56,13 @@ pub mod seri {
     ///
     /// # Errors
     /// if it cannot serialize the message
-    pub fn serialize(message: &Message) -> Result<SerializedMessage, res::SerializationError> {
-        let encoded_msg = bincode::serialize(message);
-        match encoded_msg {
-            Ok(dat) => {
-                let header = msg::Header::new(&dat);
-                Ok(SerializedMessage {
-                    message_bytes: dat,
-                    header,
-                })
-            }
-            Err(err) => Err(res::SerializationError::BincodeErr(err)),
-        }
+    pub fn serialize(message: &Message) -> Result<SerializedMessage, Box<bincode::ErrorKind>> {
+        let encoded_msg = bincode::serialize(message)?;
+        let header = msg::Header::new(&encoded_msg);
+        Ok(SerializedMessage {
+            message_bytes: encoded_msg,
+            header,
+        })
     }
 
     /// Sends a message all in one go, to socket
@@ -122,7 +115,7 @@ pub mod seri {
                     if err.kind() == tokio::io::ErrorKind::WouldBlock {
                         continue;
                     }
-                    return Err(res::GetMessageError::Error(err));
+                    return Err(res::GetMessageError::ReadError(err));
                 }
             }
         }
@@ -166,7 +159,7 @@ pub mod seri {
                             if err.kind() == tokio::io::ErrorKind::WouldBlock {
                                 continue;
                             }
-                            return Err(res::GetMessageError::Error(err));
+                            return Err(res::GetMessageError::ReadError(err));
                         }
                     }
                 }

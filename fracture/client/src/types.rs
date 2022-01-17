@@ -6,12 +6,19 @@ use crate::ui::types::GUIMessage;
 
 pub mod stati {
     use fracture_core::msg;
+    use thiserror::Error;
 
     #[derive(Debug)]
     pub enum MultiSendStatus {
         Worked { amnt: u32, bytes: u128 },
-        Failure(fracture_core::stat::SendStatus),
         NoTask,
+    }
+
+    #[derive(Debug, Error)]
+    #[error("Failed to send message: {error}")]
+    pub struct MultiSendError {
+        #[from]
+        pub error: fracture_core::stat::SendError,
     }
 
     #[derive(Debug)]
@@ -30,24 +37,35 @@ pub mod stati {
         pub bytes: usize,
     }
 
-    pub enum UpdateReadStatus {
+    #[derive(Debug, Error)]
+    pub enum UpdateReadError {
+        #[error("Server closed: {close_message}")]
         ServerClosed {
             reason: fracture_core::msg::types::ServerDisconnectReason,
             close_message: String,
         },
+        #[error("Server disconnected")]
         ServerDisconnect,
-        ReadError(fracture_core::stat::ReadMessageError),
-        Success,
+        #[error("Failed to read message: {0}")]
+        ReadError(#[from] fracture_core::stat::ReadMessageError),
     }
 
     pub enum UpdateStatus {
-        /// This means that the message was late, HOWEVER it will be reycled untill it is dealt with
-        Unexpected(msg::Message),
-        SendError(fracture_core::stat::SendStatus),
         Success,
-        Unhandled(msg::Message),
-        ConnectionRefused,
         Noop,
+    }
+
+    #[derive(Error, Debug)]
+    pub enum UpdateError {
+        /// This means that the message was late, HOWEVER it will be reycled untill it is dealt with
+        #[error("Unexpected message {:?}", 0)]
+        Unexpected(msg::Message),
+        #[error("Failed to send message: {0}")]
+        SendError(#[from] fracture_core::stat::SendError),
+        #[error("Unhandled message: {:?}", 0)]
+        Unhandled(msg::Message),
+        #[error("Connection refused")]
+        ConnectionRefused,
     }
 }
 
