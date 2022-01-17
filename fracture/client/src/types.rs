@@ -18,7 +18,7 @@ pub mod stati {
     #[error("Failed to send message: {error}")]
     pub struct MultiSendError {
         #[from]
-        error: fracture_core::stat::SendError,
+        pub error: fracture_core::stat::SendError,
     }
 
     #[derive(Debug)]

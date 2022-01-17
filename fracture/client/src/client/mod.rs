@@ -163,8 +163,8 @@ impl Client {
     }
 
     /// Processes incoming messages, and then queues messages for sending
-    pub async fn update(&mut self) -> stati::UpdateStatus {
-        use stati::UpdateStatus::{Noop, Success, Unexpected, Unhandled};
+    pub async fn update(&mut self) -> Result<stati::UpdateStatus, stati::UpdateError> {
+        use stati::{UpdateStatus, UpdateError};
         use ClientState::{Begin, GetHandlerDefaultOps, Hanshake, Ready};
         match &self.state {
             Begin => {
@@ -173,14 +173,20 @@ impl Client {
                     .send_message(fracture_core::common::gen_connect(self.name.clone()))
                     .await
                 {
-                    fracture_core::stat::SendStatus::Sent(_) => {}
-                    err => {
-                        eprintln!("Failed to send connect message:\n{:#?}", err);
-                        return stati::UpdateStatus::SendError(err);
+                    Ok(stat) => {
+                        match stat {
+                            SendStatus::NoTask => unreachable!(),
+                            SendStatus::Sent(_) => {
+                                self.state = Hanshake;
+                                Ok(UpdateStatus::Success)
+                            }
+                        }
                     }
-                };
-                self.state = Hanshake;
-                Success
+                    Err(err) => {
+                        eprintln!("Failed to send connect message:\n{:#?}", err);
+                        Err(UpdateError::SendError(err))
+                    }
+                }
             }
             Hanshake => {
                 // receive server data
@@ -198,7 +204,7 @@ impl Client {
                                     conn_status
                                 {
                                     println!("Connection refused:{}", reason);
-                                    return stati::UpdateStatus::ConnectionRefused;
+                                    return Err(UpdateError::ConnectionRefused);
                                 }
                                 println!("Connected to: {}", server_name);
                                 let real_uuid = Uuid::from_u128(your_uuid);
@@ -207,15 +213,15 @@ impl Client {
                                     name: server_name,
                                 });
                                 self.state = ClientState::GetHandlerDefaultOps;
-                                Success
+                                Ok(UpdateStatus::Success)
                             }
                             _ => {
                                 self.incoming.add(msg.clone()).unwrap();
-                                Unexpected(msg)
+                                Err(UpdateError::Unexpected(msg))
                             }
                         }
                     }
-                    Err(_) => Noop,
+                    Err(_) => Ok(UpdateStatus::Noop)
                 }
             }
             GetHandlerDefaultOps => {
@@ -225,13 +231,13 @@ impl Client {
                     }
                 }
                 self.state = ClientState::Ready;
-                Success
+                Ok(UpdateStatus::Success)
             }
             Ready => {
                 let msg = match self.incoming.remove() {
                     Ok(m) => m,
                     Err(_) => {
-                        return Noop;
+                        return Ok(UpdateStatus::Noop);
                     }
                 };
                 let mut handeld = false;
@@ -243,9 +249,9 @@ impl Client {
                     }
                 }
                 if handeld {
-                    Success
+                    Ok(UpdateStatus::Success)
                 } else {
-                    Unhandled(msg)
+                    Err(UpdateError::Unhandled(msg))
                 }
             }
         }

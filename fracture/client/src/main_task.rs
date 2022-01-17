@@ -68,35 +68,40 @@ pub fn get_main_task(
         let mut client = Client::new(stream, name, get_default());
         loop {
             tokio::select! {
-                stat = client.update_read() => {//TODO make it so that update read is not cancled, because with update loop that could cause corruption (just wait for readable, not actualy to read teh whole thing)
+                //TODO fix this so that it wont get canceled whiel reading a message
+                stat = client.update_read() => {
                     match stat {
-                        stati::UpdateReadStatus::ServerClosed { reason, close_message } => {
-                            use msg::types::ServerDisconnectReason;
-                            match reason {
-                                ServerDisconnectReason::ClientRequestedDisconnect => {
-                                    panic!("this should never happen...");
+                        Ok(_) => {}
+                        Err(err) => {
+                            match err {
+                                stati::UpdateReadError::ServerClosed { reason, close_message } => {
+                                    use msg::types::ServerDisconnectReason;
+                                    match reason {
+                                        ServerDisconnectReason::ClientRequestedDisconnect => {
+                                            panic!("this should never happen...");
+                                        }
+                                        ServerDisconnectReason::Closed => {
+                                            println!("Disconnected by server: {}", close_message);
+                                        }
+                                        ServerDisconnectReason::InvalidConnectionSequence => {
+                                            println!("Kicked for invalid connection sequence:\n{}", close_message);
+                                        }
+                                    }
+                                    client.close(stati::CloseType::ServerDisconnected).await;
+                                    break;
                                 }
-                                ServerDisconnectReason::Closed => {
-                                    println!("Disconnected by server: {}", close_message);
+                                stati::UpdateReadError::ServerDisconnect => {
+                                    println!("Server disconnected!");
+                                    client.close(stati::CloseType::ServerDisconnected).await;
+                                    break;
                                 }
-                                ServerDisconnectReason::InvalidConnectionSequence => {
-                                    println!("Kicked for invalid connection sequence:\n{}", close_message);
+                                stati::UpdateReadError::ReadError (err) => {
+                                    eprintln!("Error whilst reading message!\n{:#?}", err);
+                                    client.close(stati::CloseType::Force).await;
+                                    break;
                                 }
                             }
-                            client.close(stati::CloseType::ServerDisconnected).await;
-                            break;
                         }
-                        stati::UpdateReadStatus::ServerDisconnect => {
-                            println!("Server disconnected!");
-                            client.close(stati::CloseType::ServerDisconnected).await;
-                            break;
-                        }
-                        stati::UpdateReadStatus::ReadError (err) => {
-                            eprintln!("Error whilst reading message!\n{:#?}", err);
-                            client.close(stati::CloseType::Force).await;
-                            break;
-                        }
-                        stati::UpdateReadStatus::Success => {}//dont do anything, updates are handled seperatly
                     };
                 }
                 _ = wait_update_time() => {// client update loop
@@ -111,26 +116,31 @@ pub fn get_main_task(
                         }
                     }
                     match client.update().await {
-                        stati::UpdateStatus::ConnectionRefused => {
-                            //TODO this should actualy never happen, so remove it or implement it
-                            eprintln!("Connection to server refused!");
-                            client.close(stati::CloseType::ServerDisconnected).await;
-                            break;
+                        Ok(_stat /* these should be Noop and Success, so no issue ignoring them */ ) => {}
+                        Err(e) => {
+                            use stati::UpdateError;
+                            match e {
+                                UpdateError::ConnectionRefused => {
+                                    //TODO this should actualy never happen, so remove it or implement it
+                                    eprintln!("Connection to server refused!");
+                                    client.close(stati::CloseType::ServerDisconnected).await;
+                                    break;
+                                }
+                                UpdateError::Unexpected (msg) => {
+                                    //TODO make this a error
+                                    eprintln!("Unexpected message {:#?}", msg);
+                                }
+                                UpdateError::Unhandled (msg) => {
+                                    //TODO make this a error too
+                                    eprintln!("Unhandled message:\n{:#?}", msg);
+                                }
+                                UpdateError::SendError(err) => {
+                                    eprintln!("Send error: {:#?}", err);
+                                    client.close(stati::CloseType::Force).await;
+                                    break;
+                                }
+                            }
                         }
-                        stati::UpdateStatus::Unexpected (msg) => {
-                            //TODO make this a error
-                            eprintln!("Unexpected message {:#?}", msg);
-                        }
-                        stati::UpdateStatus::Unhandled (msg) => {
-                            //TODO make this a error too
-                            eprintln!("Unhandled message:\n{:#?}", msg);
-                        }
-                        stati::UpdateStatus::SendError(err) => {
-                            eprintln!("Send error: {:#?}", err);
-                            client.close(stati::CloseType::Force).await;
-                            break;
-                        }
-                        _ => {}//these should be Noop and Success, so no issue ignoring them
                     };
                     client.collect_actions();
                     loop {
@@ -174,9 +184,9 @@ pub fn get_main_task(
                             }
                         };
                     }
-                    if let stati::MultiSendStatus::Failure (ms_err) = client.send_all_queued().await {//we only care about failure here
-                        match ms_err {
-                            stat::SendStatus::Failure (err) => {
+                    if let Err(stati::MultiSendError {error}) = client.send_all_queued().await {//we only care about failure here
+                        match error {
+                            stat::SendError::Failure (err) => {
                                 if err.kind() == std::io::ErrorKind::NotConnected {
                                     println!("Disconnected!");
                                 } else {
@@ -185,10 +195,9 @@ pub fn get_main_task(
                                 client.close(stati::CloseType::ServerDisconnected).await;
                                 break;
                             }
-                            stat::SendStatus::SeriError (err) => {
+                            stat::SendError::SeriError (err) => {
                                 panic!("Could not serialize msessage:\n{:#?}", err);
                             }
-                            _ => {unreachable!()}//this should not happen
                         }
                     }
                 }

@@ -2,5 +2,11 @@
 [workspace]
 members = ["fracture/server", "fracture/client", "fracture/core", "fracture/config"]
 
-[profile.release]
-lto = "fat" # hello long compile times, hello google fi, the phone plan that can
+[profile.dev-opt]
+inherits = "dev"
+opt-level = 2
+
+
+[profile.opt100]
+inherits = "release"
+codegen-units = 1 # this is similar, if not better than lto = fat, because i guess it means no linking?
