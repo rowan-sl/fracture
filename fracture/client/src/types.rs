@@ -200,6 +200,9 @@ pub enum CommMessage {
     //Comm -> GUI
     HandleChat(ChatMessage),
     RawMessage(RawMessage),
+    ServerInfo {
+        server_name: String,
+    }
 }
 
 pub struct CommChannels {

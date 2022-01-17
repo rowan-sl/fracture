@@ -65,7 +65,7 @@ pub fn get_main_task(
 ) -> JoinHandle<()> {
     tokio::spawn(async move {
         let mut close_rcv = shutdown_tx.subscribe();
-        let mut client = Client::new(stream, name, get_default());
+        let mut client = Client::new(stream, name, get_default(), comm_send.clone());
         loop {
             tokio::select! {
                 //TODO fix this so that it wont get canceled whiel reading a message

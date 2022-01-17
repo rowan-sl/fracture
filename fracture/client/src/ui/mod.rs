@@ -23,6 +23,7 @@ pub struct FractureClientGUI {
     chat_elems: Vec<Box<dyn ChatViewable<GUIMessage>>>,
     current_input: String,
     exit: bool,
+    server_name: Option<String>,
 }
 
 impl Application for FractureClientGUI {
@@ -42,6 +43,7 @@ impl Application for FractureClientGUI {
                 chat_elems: vec![],
                 current_input: String::new(),
                 exit: false,
+                server_name: None,
             },
             Command::none(),
         )
@@ -85,6 +87,9 @@ impl Application for FractureClientGUI {
                     }
                     CommMessage::RawMessage(raw_msg) => {
                         self.chat_elems.push(Box::new(raw_msg));
+                    }
+                    CommMessage::ServerInfo { server_name } => {
+                        self.server_name = Some(server_name);
                     }
                     _ => panic!("GUI side received a message that it should not have!"),
                 },
@@ -133,9 +138,15 @@ fn get_main_ui(
                     )
                     .push(Space::with_width(Length::Units(5)))
                     .push(
+                        Text::new(format!("{}", this.server_name.as_ref().unwrap_or(&"Unidentified Server".to_string())))
+                        .vertical_alignment(iced::VerticalAlignment::Center)
+                    )
+                    .push(Space::with_width(Length::Fill))
+                    .push(
                         Text::new(format!("{}", this.username))
                         .vertical_alignment(iced::VerticalAlignment::Center)
-                    ),
+                    )
+                    .push(Space::with_width(Length::Units(5))),
             )
             .width(Length::Fill)
             .style(style::menubar::MenuBar),

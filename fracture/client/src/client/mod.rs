@@ -1,3 +1,5 @@
+use std::sync::mpsc::Sender as MPSCSender;
+
 use queues::queue;
 use queues::IsQueue;
 use queues::Queue;
@@ -11,6 +13,7 @@ use fracture_core::stat::SendStatus;
 use fracture_core::stat::SendError;
 use fracture_core::SocketUtils;
 
+use crate::types::CommMessage;
 use crate::types::{stati, ClientState, HandlerOperation, ServerInfo};
 
 pub struct Client {
@@ -23,6 +26,7 @@ pub struct Client {
     handlers: Vec<Box<dyn MessageHandler<Operation = HandlerOperation> + Send>>,
     pub server_info: Option<ServerInfo>,
     pub state: ClientState,
+    gui_send: MPSCSender<CommMessage>,
 }
 
 impl Client {
@@ -30,6 +34,7 @@ impl Client {
         sock: TcpStream,
         name: String,
         handlers: Vec<Box<dyn MessageHandler<Operation = HandlerOperation> + Send>>,
+        gui_send: MPSCSender<CommMessage>,
     ) -> Self {
         Self {
             sock,
@@ -40,6 +45,7 @@ impl Client {
             name,
             server_info: None,
             state: ClientState::Begin,
+            gui_send,
         }
     }
 
@@ -210,8 +216,14 @@ impl Client {
                                 let real_uuid = Uuid::from_u128(your_uuid);
                                 self.server_info = Some(ServerInfo {
                                     client_uuid: real_uuid,
-                                    name: server_name,
+                                    name: server_name.clone(),
                                 });
+                                // does not matter if it worked or not
+                                let _ = self.gui_send.send(
+                                    CommMessage::ServerInfo {
+                                        server_name
+                                    }
+                                );
                                 self.state = ClientState::GetHandlerDefaultOps;
                                 Ok(UpdateStatus::Success)
                             }
