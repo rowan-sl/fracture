@@ -13,8 +13,19 @@ const DEFAULT_LOGGER_COLORMODE: &str = "auto";//auto, never, or always
 
 #[derive(Clone, Parser, Debug)]
 #[clap(name = NAME, about = ABOUT, version = VERSION, author = AUTHOR)]
-pub struct NewArgs {
-    
+pub struct Args {
+    #[clap(long, short, help = "username for connecting to the server with")]
+    name: String,
+
+    #[clap(long, short, help = "connect to a server, using the servers code")]
+    #[clap(required(true))]
+    #[clap(conflicts_with("addr"))]
+    code: Option<String>,
+
+    #[clap(long, short, help = "connect to a server, using the servers ip address")]
+    #[clap(required(true))]
+    #[clap(conflicts_with("code"))]
+    addr: Option<String>,
 }
 
 pub struct Args {
@@ -46,6 +57,7 @@ pub fn get_args() -> Result<Args, ()> {
                 .long("addr")
                 .short("a")
                 .takes_value(true)
+                .conflicts_with(arg_id)
                 .multiple(false),
         )
         .group(
